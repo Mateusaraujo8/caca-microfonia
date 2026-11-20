@@ -1,0 +1,15 @@
+{
+  "name": "Caça-Microfonia",
+  "short_name": "Microfonia",
+  "description": "Analisador de espectro e detector de microfonia para a mesa de som da igreja.",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0e1113",
+  "theme_color": "#0e1113",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

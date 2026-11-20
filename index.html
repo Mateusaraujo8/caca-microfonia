@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e1113">
+<title>Caça-Microfonia</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: mesa de som à noite — cabine escura, lâmpada âmbar de VU, traço do analisador em ciano.
+   Celular: tudo empilhado. Tela larga: espectro à esquerda, medidor e histórico à direita. */
+:root{
+  --bg:#0e1113; --panel:#161b1e; --panel-2:#1c2327; --line:#273238;
+  --fg:#e7ecea; --mute:#8b9a98; --amber:#f2b544; --hot:#ff5b4f; --ok:#5fd39a; --trace:#7fd3e6;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font:15px/1.5 var(--f-body);padding:env(safe-area-inset-top,0px) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-top:14px}
+
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px}
+.brand h1{font:700 26px/1 var(--f-display);letter-spacing:.02em;margin:0;text-transform:uppercase}
+.lamp{width:12px;height:12px;border-radius:50%;background:#3a2a10;box-shadow:inset 0 0 0 1px #5a4520}
+.lamp.on{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.lamp.alarm{background:var(--hot);box-shadow:0 0 14px var(--hot);animation:blink .5s steps(2) infinite}
+@keyframes blink{50%{opacity:.35}}
+.controls{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer;min-height:44px}
+.btn:hover{border-color:var(--mute)}
+.btn:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.btn.primary{background:var(--amber);color:#1b1404;border-color:var(--amber)}
+.btn.stop{background:var(--hot);color:#1f0705;border-color:var(--hot)}
+.btn.small{padding:6px 10px;min-height:34px;font-size:13px}
+
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+@media (min-width:900px){.grid{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.label{font:600 12px/1 var(--f-display);letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+
+/* alerta */
+#alert{display:flex;flex-direction:column;gap:6px;border-left:4px solid var(--line)}
+#alert.hot{border-left-color:var(--hot);background:linear-gradient(90deg,rgba(255,91,79,.12),transparent 60%),var(--panel)}
+#alert.calm{border-left-color:var(--ok)}
+.big{font:700 54px/1 var(--f-display);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+#alert.hot .big{color:var(--hot)}
+#alert.calm .big{color:var(--ok);font-size:30px}
+.meta{display:flex;gap:8px;flex-wrap:wrap}
+.chip{font:500 13px/1 var(--f-mono);border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:var(--panel-2)}
+.chip b{color:var(--amber);font-weight:600}
+.advice{margin:4px 0 0;color:var(--fg);max-width:62ch}
+.advice small{color:var(--mute)}
+
+/* espectro */
+.specHead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--mute);flex-wrap:wrap}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+canvas{display:block;width:100%;height:280px;border-radius:6px;background:#0a0d0e}
+@media (min-width:900px){canvas{height:380px}}
+
+/* medidor */
+.meterTop{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.spl{font:700 64px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.unit{font:600 18px/1 var(--f-display);color:var(--mute)}
+.bar{position:relative;height:14px;border-radius:4px;background:linear-gradient(90deg,var(--ok) 0 55%,var(--amber) 55% 77%,var(--hot) 77% 100%);opacity:.9;margin:12px 0 4px;overflow:hidden}
+.bar .mask{position:absolute;top:0;right:0;bottom:0;background:#0a0d0e;transition:width .1s linear}
+.bar .peak{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--fg)}
+.scale{display:flex;justify-content:space-between;font:400 11px/1 var(--f-mono);color:var(--mute)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.stat{background:var(--panel-2);border-radius:8px;padding:8px 10px}
+.stat .v{font:600 20px/1.2 var(--f-mono);font-variant-numeric:tabular-nums}
+.note{font-size:12.5px;color:var(--mute);margin:10px 0 0}
+
+/* histórico */
+.histHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px}
+#hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+#hist li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;background:var(--panel-2);border-radius:8px;padding:8px 10px}
+#hist .hf{font:600 17px/1 var(--f-mono);font-variant-numeric:tabular-nums;min-width:86px}
+#hist .hb{font-size:13px;color:var(--mute)}
+#hist .hc{font:600 13px/1 var(--f-mono);color:var(--amber)}
+#hist .empty{display:block;color:var(--mute);background:none;padding:4px 0}
+
+/* config e dicas */
+details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:0 14px}
+summary{cursor:pointer;padding:14px 0;font:600 16px/1 var(--f-display);letter-spacing:.06em;text-transform:uppercase;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";float:right;color:var(--mute)}
+details[open] summary::after{content:"–"}
+.set{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.set label{font-weight:600}
+.set output{font:600 14px var(--f-mono);color:var(--amber)}
+.set input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--amber)}
+.set p{grid-column:1/-1;margin:0;font-size:13px;color:var(--mute)}
+.set input[type=number]{width:90px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+ol.tips{margin:0 0 14px;padding-left:22px;display:flex;flex-direction:column;gap:8px;max-width:70ch}
+ol.tips b{color:var(--amber)}
+.err{color:var(--hot)}
+footer{color:var(--mute);font-size:12px;text-align:center}
+
+/* abas */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;font:600 16px/1 var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--mute);cursor:pointer;white-space:nowrap;min-height:44px}
+.tab[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--amber)}
+.tab:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+.view{display:flex;flex-direction:column;gap:14px}
+
+/* medir pela foto */
+.seg{display:flex;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:4px 0 8px}
+.segb{flex:1;background:var(--panel-2);border:0;border-right:1px solid var(--line);padding:10px 6px;font-weight:600;cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px}
+.segb:last-child{border-right:0}
+.segb i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.segb.on{background:var(--fg);color:var(--bg)}
+.segb:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+.hint{margin:0 0 10px;font-size:14px;color:var(--mute);max-width:70ch}
+.photoBox{display:flex;justify-content:center;background:#0a0d0e;border-radius:6px;min-height:220px;align-items:center}
+#photo{touch-action:none;cursor:crosshair;border-radius:6px;height:auto}
+.photoEmpty{color:var(--mute);text-align:center;padding:30px 16px;max-width:40ch}
+.refRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.refRow select,.calc input{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:8px;min-height:40px}
+.refRow select{flex:1 1 180px;min-width:0}
+.refRow input{width:96px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:8px;min-height:40px}
+#lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+#lines li{display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;background:var(--panel-2);border-radius:8px;padding:8px 10px}
+#lines .sw{width:12px;height:12px;border-radius:50%}
+#lines .lv{font:600 16px/1 var(--f-mono);font-variant-numeric:tabular-nums}
+#lines .del{background:none;border:1px solid var(--line);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--mute)}
+#lines .empty{display:block;color:var(--mute);background:none;padding:4px 0}
+.calc{border-top:1px solid var(--line);padding:12px 0 4px;display:flex;flex-direction:column;gap:8px}
+.calc:first-of-type{border-top:0}
+.calc h3{margin:0;font:600 17px/1.2 var(--f-display);letter-spacing:.03em}
+.calc .row{display:flex;flex-wrap:wrap;gap:8px 14px}
+.calc label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mute)}
+.calc input{width:110px;color:var(--fg)}
+.calc .res{margin:0;font-size:15px}
+.calc .res b{color:var(--amber);font-family:var(--f-mono)}
+.linkbtn{background:none;border:0;color:var(--trace);text-decoration:underline;cursor:pointer;padding:0;font-size:13px;align-self:flex-start}
+@media (prefers-reduced-motion:reduce){.lamp.alarm{animation:none}.bar .mask{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="lamp" id="lamp"></span><h1>Caça-Microfonia</h1></div>
+    <div class="controls">
+      <button class="btn primary" id="btnStart">Ligar microfone</button>
+      <button class="btn" id="btnDemo">Demonstração</button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tabMic" aria-selected="true" aria-controls="viewMic">Microfonia</button>
+    <button class="tab" role="tab" id="tabMed" aria-selected="false" aria-controls="viewMed">Medir pela foto</button>
+  </nav>
+
+  <div class="view" id="viewMic" role="tabpanel" aria-labelledby="tabMic">
+  <div class="grid">
+    <div class="col">
+      <section class="panel" id="alert" aria-live="polite">
+        <span class="label" id="alertLabel">Como usar</span>
+        <div class="big" id="alertFreq">Pronto</div>
+        <div class="meta" id="alertMeta"></div>
+        <p class="advice" id="alertAdvice">Toque em <b>Ligar microfone</b> e deixe o celular perto da mesa ou no meio da igreja, apontado para as caixas. Quando aparecer um apito, o app mostra a frequência e qual botão da mesa mexer. Para ver como funciona sem fazer barulho, toque em <b>Demonstração</b>.</p>
+      </section>
+
+      <section class="panel">
+        <div class="specHead">
+          <span class="label">Analisador de espectro</span>
+          <div class="legend"><span><i style="background:var(--trace)"></i>Som agora</span><span><i style="background:var(--mute)"></i>Pico</span><span><i style="background:var(--hot)"></i>Microfonia</span></div>
+        </div>
+        <canvas id="spec" aria-label="Gráfico de frequências captadas pelo microfone"></canvas>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel">
+        <span class="label">Volume no ambiente</span>
+        <div class="meterTop"><span class="spl" id="spl">--</span><span class="unit">dB(A) aprox.</span></div>
+        <div class="bar"><div class="mask" id="barMask" style="width:100%"></div><div class="peak" id="barPeak" style="left:0"></div></div>
+        <div class="scale"><span>60</span><span>70</span><span>80</span><span>90</span><span>100</span><span>110</span></div>
+        <div class="stats">
+          <div class="stat"><div class="label">Máximo</div><div class="v" id="sMax">--</div></div>
+          <div class="stat"><div class="label">Média 1 min</div><div class="v" id="sLeq">--</div></div>
+          <div class="stat"><div class="label">Média 15 min</div><div class="v" id="sLeq15">--</div></div>
+        </div>
+        <p class="note">Referência para culto: louvor entre 85 e 95 dB(A); pregação entre 75 e 85. Acima de 100 cansa e incomoda. Celular não é decibelímetro: ajuste a calibração nas configurações se tiver um medidor de verdade para comparar.</p>
+        <button class="btn small" id="btnResetMax" style="margin-top:10px">Zerar máximo</button>
+      </section>
+
+      <section class="panel">
+        <div class="histHead"><span class="label">Frequências que já deram microfonia</span><button class="btn small" id="btnClear">Limpar</button></div>
+        <ul id="hist"></ul>
+        <p class="note">A lista fica salva neste aparelho. Se a mesma frequência aparece toda semana, vale deixar ela cortada no EQ gráfico.</p>
+      </section>
+    </div>
+  </div>
+
+  <details>
+    <summary>Como tirar microfonia na mesa analógica</summary>
+    <ol class="tips">
+      <li><b>Primeiro o mais simples:</b> afaste o microfone da caixa e do retorno. O microfone nunca deve apontar para uma caixa. Microfone cardioide (SM58 e parecidos) rejeita som pela parte de trás: o retorno fica na frente de quem canta, atrás do microfone.</li>
+      <li><b>Ganho (GAIN/TRIM):</b> ganho alto demais é a causa mais comum. Ajuste o ganho com a pessoa falando na altura normal, e use o fader para o volume.</li>
+      <li><b>Low cut (filtro de 80/100 Hz):</b> ligue em todos os microfones de voz. Tira o ronco grave que embola e realimenta.</li>
+      <li><b>EQ do canal:</b> se o apito for no médio e o canal tiver <b>MID com frequência ajustável</b>, gire o botão de frequência até o valor que o app mostrou e corte o MID uns 3 a 6 dB. Agudo fino (acima de 6 kHz): abaixe o HIGH. Grave: abaixe o LOW.</li>
+      <li><b>EQ gráfico (no master ou no retorno):</b> abaixe só a banda que o app indicou, 3 a 6 dB. Não precisa cortar muito; se a microfonia mudar de lugar, corte a próxima.</li>
+      <li><b>Tirar microfonia antes do culto:</b> com os microfones abertos no lugar onde ficam, suba o volume devagar até começar a apitar. Anote a frequência, corte no EQ gráfico, e repita até umas 3 ou 4 frequências. Depois baixe o volume geral uns 3 dB para ter margem.</li>
+      <li><b>Retorno:</b> microfonia no palco quase sempre vem do retorno. Use o EQ gráfico do retorno, não o do PA.</li>
+    </ol>
+  </details>
+
+  <details>
+    <summary>Configurações</summary>
+    <div class="set"><label for="cfgProm">Sensibilidade</label><output id="oProm"></output><input type="range" id="cfgProm" min="8" max="26" step="1"><p>Quanto o pico precisa se destacar do resto do som (dB). Número menor detecta mais cedo, mas pode confundir nota de teclado com microfonia.</p></div>
+    <div class="set"><label for="cfgHold">Tempo para confirmar</label><output id="oHold"></output><input type="range" id="cfgHold" min="0.2" max="2" step="0.1"><p>Por quanto tempo o pico precisa ficar parado na mesma frequência. Durante o louvor, use 1 s ou mais para não confundir com notas longas.</p></div>
+    <div class="set"><label for="cfgMin">Volume mínimo do pico</label><output id="oMin"></output><input type="range" id="cfgMin" min="-90" max="-30" step="1"><p>Ignora picos mais fracos que isso (dBFS do microfone do celular).</p></div>
+    <div class="set"><label for="cfgCal">Calibração do medidor (dB)</label><input type="number" id="cfgCal" step="0.5"><p>Coloque o celular ao lado de um decibelímetro e ajuste este número até os dois mostrarem o mesmo valor.</p></div>
+  </details>
+  </div>
+
+  <div class="view" id="viewMed" role="tabpanel" aria-labelledby="tabMed" hidden>
+    <div class="grid">
+      <div class="col">
+        <section class="panel">
+          <div class="specHead">
+            <span class="label">Foto</span>
+            <div class="controls">
+              <label class="btn small primary" for="photoIn">Abrir foto</label>
+              <input type="file" id="photoIn" accept="image/*" hidden>
+              <button class="btn small" id="btnExample">Usar exemplo</button>
+            </div>
+          </div>
+          <div class="seg" role="group" aria-label="O que marcar na foto">
+            <button class="segb on" data-mode="ref"><i style="background:var(--trace)"></i>Referência</button>
+            <button class="segb" data-mode="len"><i style="background:var(--amber)"></i>Medir</button>
+            <button class="segb" data-mode="ang"><i style="background:var(--ok)"></i>Inclinação</button>
+          </div>
+          <p class="hint" id="hint"></p>
+          <div class="photoBox">
+            <canvas id="photo" hidden aria-label="Foto para medir"></canvas>
+            <div class="photoEmpty" id="photoEmpty">Abra uma foto das caixas, do palco ou da igreja. Para experimentar antes, toque em <b>Usar exemplo</b>.</div>
+          </div>
+        </section>
+      </div>
+
+      <div class="col">
+        <section class="panel">
+          <span class="label">Tamanho da referência</span>
+          <div class="refRow">
+            <select id="refPreset" aria-label="Objeto de referência">
+              <option value="2.10">Porta, altura (2,10 m)</option>
+              <option value="0.80">Porta, largura (0,80 m)</option>
+              <option value="0.297">Folha A4, lado maior (0,297 m)</option>
+              <option value="1.00">Trena ou fita de 1 m</option>
+              <option value="">Outro (digite o tamanho)</option>
+            </select>
+            <input type="number" id="refLen" step="0.01" min="0.01" value="2.10" aria-label="Tamanho da referência em metros"><span>m</span>
+          </div>
+          <p class="note">A medida só fica certa para coisas na mesma parede ou mesma distância da referência. Com uma pessoa de altura conhecida, escolha "Outro".</p>
+        </section>
+
+        <section class="panel">
+          <div class="histHead"><span class="label">Medidas</span><button class="btn small" id="btnClearLines">Limpar</button></div>
+          <ul id="lines"></ul>
+        </section>
+
+        <section class="panel">
+          <span class="label">Contas rápidas</span>
+          <div class="calc">
+            <h3>Onde o som da caixa cai</h3>
+            <div class="row">
+              <label for="cH">Altura do centro da caixa (m)<input type="number" id="cH" step="0.1" value="2.4"></label>
+              <label for="cTilt">Inclinação para baixo (°)<input type="number" id="cTilt" step="1" value="10"></label>
+              <label for="cEar">Altura do ouvido (m)<input type="number" id="cEar" step="0.1" value="1.2"></label>
+            </div>
+            <button class="linkbtn" id="useTilt" hidden>Usar a inclinação medida na foto</button>
+            <p class="res" id="rAim"></p>
+          </div>
+          <div class="calc">
+            <h3>Volume na frente e no fundo</h3>
+            <div class="row">
+              <label for="cD1">Caixa até a 1ª fila (m)<input type="number" id="cD1" step="0.5" value="3"></label>
+              <label for="cD2">Caixa até o último banco (m)<input type="number" id="cD2" step="0.5" value="15"></label>
+            </div>
+            <p class="res" id="rDb"></p>
+          </div>
+          <div class="calc">
+            <h3>Delay da caixa de reforço</h3>
+            <div class="row">
+              <label for="cDd">Distância da caixa principal até a de reforço (m)<input type="number" id="cDd" step="0.5" value="8"></label>
+            </div>
+            <p class="res" id="rDelay"></p>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <details>
+      <summary>Como tirar uma foto boa para medir</summary>
+      <ol class="tips">
+        <li><b>Foto reta:</b> celular em pé e sem inclinar, de frente para a parede ou caixa que vai medir.</li>
+        <li><b>De longe com zoom</b> é melhor que de perto: a lente do celular entorta as bordas da foto.</li>
+        <li><b>Referência no mesmo plano:</b> a porta, a folha A4 ou a trena precisa estar na mesma parede ou distância do que você vai medir.</li>
+        <li><b>Inclinação da caixa:</b> tire a foto exatamente de lado. Marque a frente da caixa de cima para baixo.</li>
+        <li><b>Profundidade da igreja</b> (do altar até o fundo) não dá para medir bem por foto. Conte os passos: 1 passo normal ≈ 0,75 m.</li>
+      </ol>
+    </details>
+  </div>
+
+  <footer>Funciona melhor com o celular fora do bolso, sem capinha cobrindo o microfone e com a tela ligada.</footer>
+</div>
+
+<script>
+"use strict";
+(() => {
+const $ = s => document.querySelector(s);
+
+/* ---------- configurações ---------- */
+const DEF = { prom: 15, hold: 0.6, minDb: -72, cal: 105 };
+let cfg = { ...DEF };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem("cm_cfg") || "{}")); } catch (e) {}
+const saveCfg = () => { try { localStorage.setItem("cm_cfg", JSON.stringify(cfg)); } catch (e) {} };
+
+function bindRange(id, out, key, fmt) {
+  const el = $(id), o = $(out);
+  el.value = cfg[key]; o.textContent = fmt(cfg[key]);
+  el.addEventListener("input", () => { cfg[key] = +el.value; o.textContent = fmt(cfg[key]); saveCfg(); });
+}
+bindRange("#cfgProm", "#oProm", "prom", v => v + " dB");
+bindRange("#cfgHold", "#oHold", "hold", v => (+v).toFixed(1).replace(".", ",") + " s");
+bindRange("#cfgMin", "#oMin", "minDb", v => v + " dBFS");
+$("#cfgCal").value = cfg.cal;
+$("#cfgCal").addEventListener("change", e => { const v = parseFloat(e.target.value); if (isFinite(v)) { cfg.cal = v; saveCfg(); } });
+
+/* ---------- utilidades ---------- */
+const ISO = [20,25,31.5,40,50,63,80,100,125,160,200,250,315,400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,8000,10000,12500,16000,20000];
+const NOTES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const NOTES_PT = ["Dó","Dó#","Ré","Ré#","Mi","Fá","Fá#","Sol","Sol#","Lá","Lá#","Si"];
+const fmtHz = f => f < 1000 ? Math.round(f) + " Hz" : (f / 1000).toFixed(f < 10000 ? 2 : 1).replace(".", ",") + " kHz";
+const fmtBand = b => b < 1000 ? String(b).replace(".", ",") : (b / 1000).toString().replace(".", ",") + "k";
+const nearestBand = f => ISO.reduce((a, b) => Math.abs(Math.log(b / f)) < Math.abs(Math.log(a / f)) ? b : a);
+function noteOf(f) {
+  const m = Math.round(69 + 12 * Math.log2(f / 440));
+  const i = ((m % 12) + 12) % 12, oct = Math.floor(m / 12) - 1;
+  return NOTES_PT[i] + " (" + NOTES[i] + oct + ")";
+}
+function adviceFor(f) {
+  const band = fmtBand(nearestBand(f));
+  if (f < 200) return `Região grave (som embolado/ronco). Ligue o <b>LOW CUT</b> do microfone e abaixe o <b>LOW</b> do canal. No EQ gráfico, corte a banda <b>${band}</b> uns 3 a 6 dB.`;
+  if (f < 6000) return `Região média. Se o canal tiver <b>MID ajustável</b>, gire a frequência para <b>${fmtHz(f)}</b> e corte o MID 3 a 6 dB. No EQ gráfico, abaixe a banda <b>${band}</b>.`;
+  return `Agudo (apito fino). Abaixe o <b>HIGH</b> do canal ou, no EQ gráfico, a banda <b>${band}</b> uns 3 a 6 dB.`;
+}
+function aWeight(f) {
+  if (f <= 0) return -200;
+  const f2 = f * f;
+  const ra = (12194 ** 2 * f2 * f2) / ((f2 + 20.6 ** 2) * Math.sqrt((f2 + 107.7 ** 2) * (f2 + 737.9 ** 2)) * (f2 + 12194 ** 2));
+  return 20 * Math.log10(ra) + 2.0;
+}
+
+/* ---------- histórico ---------- */
+let hist = [];
+try { hist = JSON.parse(localStorage.getItem("cm_hist") || "[]"); } catch (e) {}
+const saveHist = () => { try { localStorage.setItem("cm_hist", JSON.stringify(hist)); } catch (e) {} };
+function addHist(f) {
+  const h = hist.find(x => Math.abs(x.f - f) / x.f < 0.03);
+  if (h) { h.n++; h.t = Date.now(); h.f = h.f * 0.7 + f * 0.3; }
+  else hist.push({ f, n: 1, t: Date.now() });
+  hist.sort((a, b) => b.n - a.n || b.t - a.t);
+  hist = hist.slice(0, 30);
+  saveHist(); renderHist();
+}
+function renderHist() {
+  const ul = $("#hist");
+  ul.textContent = "";
+  if (!hist.length) {
+    const li = document.createElement("li"); li.className = "empty";
+    li.textContent = "Nenhuma ainda. Elas aparecem aqui assim que o app detectar um apito.";
+    ul.append(li); return;
+  }
+  for (const h of hist) {
+    const li = document.createElement("li");
+    const d = new Date(h.t);
+    const when = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    li.innerHTML = `<span class="hf"></span><span class="hb"></span><span class="hc"></span>`;
+    li.children[0].textContent = fmtHz(h.f);
+    li.children[1].textContent = "Banda " + fmtBand(nearestBand(h.f)) + " · " + when;
+    li.children[2].textContent = h.n + "×";
+    ul.append(li);
+  }
+}
+$("#btnClear").addEventListener("click", () => { hist = []; saveHist(); renderHist(); });
+renderHist();
+
+/* ---------- áudio ---------- */
+let ctx = null, analyser = null, stream = null, demo = null, running = false, wakeLock = null;
+let spec, peak, timeBuf, prefix, aw, binHz, nBins;
+let tracks = [];
+let splMax = -Infinity, leqBuf = [], lastLeqPush = 0;
+
+async function start(useDemo) {
+  stop();
+  try {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await ctx.resume();
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 16384;
+    analyser.smoothingTimeConstant = 0.55;
+    analyser.minDecibels = -130; analyser.maxDecibels = 0;
+    if (useDemo) {
+      demo = buildDemo(ctx, analyser);
+    } else {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("insecure");
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      ctx.createMediaStreamSource(stream).connect(analyser);
+    }
+  } catch (err) {
+    stop();
+    showError(err);
+    return;
+  }
+  nBins = analyser.frequencyBinCount;
+  binHz = ctx.sampleRate / analyser.fftSize;
+  spec = new Float32Array(nBins);
+  peak = new Float32Array(nBins).fill(-130);
+  timeBuf = new Float32Array(analyser.fftSize);
+  prefix = new Float64Array(nBins + 1);
+  aw = new Float32Array(nBins);
+  for (let i = 0; i < nBins; i++) aw[i] = aWeight(i * binHz);
+  tracks = []; leqBuf = []; splMax = -Infinity;
+  running = true;
+  setButtons(useDemo);
+  layoutCanvas();
+  try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+  lastFrame = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function stop() {
+  running = false;
+  if (demo) { demo.stop(); demo = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (ctx) { ctx.close().catch(() => {}); ctx = null; }
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  setButtons(null);
+  $("#lamp").className = "lamp";
+}
+
+function showError(err) {
+  const a = $("#alert");
+  a.className = "panel";
+  $("#alertLabel").textContent = "Não consegui abrir o microfone";
+  $("#alertFreq").textContent = "Sem acesso";
+  $("#alertMeta").textContent = "";
+  let msg;
+  if (err && err.message === "insecure") msg = "O navegador só libera o microfone em sites com <b>https</b>. Abra o app pelo endereço https (por exemplo, publicado no GitHub Pages) ou direto no computador.";
+  else if (err && (err.name === "NotAllowedError" || err.name === "SecurityError")) msg = "A permissão do microfone foi negada. Toque no cadeado ao lado do endereço do site, libere o <b>Microfone</b> e tente de novo.";
+  else if (err && err.name === "NotFoundError") msg = "Nenhum microfone encontrado neste aparelho.";
+  else msg = "Erro: " + (err && (err.message || err.name) || "desconhecido") + ". Feche outros apps que estejam usando o microfone e tente de novo.";
+  $("#alertAdvice").innerHTML = `<span class="err">${msg}</span>`;
+}
+
+function setButtons(mode) {
+  const bs = $("#btnStart"), bd = $("#btnDemo");
+  bs.textContent = mode === false ? "Desligar" : "Ligar microfone";
+  bs.className = "btn " + (mode === false ? "stop" : "primary");
+  bd.textContent = mode === true ? "Parar demonstração" : "Demonstração";
+  bd.className = "btn" + (mode === true ? " stop" : "");
+}
+$("#btnStart").addEventListener("click", () => running && !demo ? (stop(), idleAlert()) : start(false));
+$("#btnDemo").addEventListener("click", () => running && demo ? (stop(), idleAlert()) : start(true));
+$("#btnResetMax").addEventListener("click", () => { splMax = -Infinity; });
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && running && !wakeLock && "wakeLock" in navigator) {
+    try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+  }
+});
+
+/* Demonstração: ruído rosa (como banda tocando baixo) + microfonias que crescem, só para o analisador (não sai no alto-falante). */
+function buildDemo(ac, dest) {
+  const len = ac.sampleRate * 4, buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+  for (let i = 0; i < len; i++) {
+    const w = Math.random() * 2 - 1;
+    b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759; b2 = 0.969 * b2 + w * 0.153852;
+    b3 = 0.8665 * b3 + w * 0.3104856; b4 = 0.55 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.016898;
+    d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11; b6 = w * 0.115926;
+  }
+  const noise = ac.createBufferSource(); noise.buffer = buf; noise.loop = true;
+  const ng = ac.createGain(); ng.gain.value = 0.25;
+  noise.connect(ng).connect(dest); noise.start();
+  const timers = [];
+  const seq = [[2470, 1.5], [630, 7.5], [3150, 13.5]];
+  function cycle() {
+    for (const [f, at] of seq) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.frequency.value = f * (1 + (Math.random() - 0.5) * 0.02);
+      const t0 = ac.currentTime + at;
+      g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.06, t0 + 2.5); g.gain.linearRampToValueAtTime(0, t0 + 4);
+      o.connect(g).connect(dest); o.start(t0); o.stop(t0 + 4.1);
+    }
+    timers.push(setTimeout(cycle, 19000));
+  }
+  cycle();
+  return { stop() { timers.forEach(clearTimeout); try { noise.stop(); } catch (e) {} } };
+}
+
+/* ---------- detecção de microfonia ---------- */
+function detect(dt) {
+  const lo = Math.max(3, Math.ceil(70 / binHz)), hi = Math.min(nBins - 4, Math.floor(14000 / binHz));
+  prefix[0] = 0;
+  for (let i = 0; i < nBins; i++) prefix[i + 1] = prefix[i] + spec[i];
+  const cands = [];
+  for (let i = lo; i <= hi; i++) {
+    const v = spec[i];
+    if (v < cfg.minDb) continue;
+    if (!(v > spec[i - 1] && v >= spec[i + 1] && v > spec[i - 2] && v >= spec[i + 2])) continue;
+    const f = i * binHz;
+    const half = Math.max(14, Math.ceil(f * 0.12 / binHz));       // ~1/3 de oitava em volta
+    const guard = Math.max(4, Math.ceil(f * 0.012 / binHz));      // largura do próprio pico
+    const a = Math.max(0, i - half), b = Math.min(nBins - 1, i + half);
+    const ga = Math.max(a, i - guard), gb = Math.min(b, i + guard);
+    const cnt = (b - a + 1) - (gb - ga + 1);
+    if (cnt < 6) continue;
+    const mean = ((prefix[b + 1] - prefix[a]) - (prefix[gb + 1] - prefix[ga])) / cnt;
+    const prom = v - mean;
+    if (prom < cfg.prom * 0.7) continue;
+    const y1 = spec[i - 1], y2 = v, y3 = spec[i + 1];
+    const den = y1 - 2 * y2 + y3;
+    const p = den !== 0 ? 0.5 * (y1 - y3) / den : 0;
+    cands.push({ f: (i + p) * binHz, v, prom });
+  }
+  cands.sort((x, y) => y.prom - x.prom);
+  const top = cands.slice(0, 6);
+  for (const t of tracks) t.hit = false;
+  for (const c of top) {
+    let t = tracks.find(t => !t.hit && Math.abs(c.f - t.f) / t.f < 0.025);
+    if (t) { t.f = t.f * 0.8 + c.f * 0.2; t.v = c.v; t.prom = t.prom * 0.7 + c.prom * 0.3; t.hit = true; t.miss = 0; if (c.prom >= cfg.prom) t.age += dt; }
+    else tracks.push({ f: c.f, v: c.v, prom: c.prom, age: 0, miss: 0, hit: true, flagged: false });
+  }
+  for (const t of tracks) {
+    if (!t.hit) t.miss += dt;
+    if (!t.flagged && t.age >= cfg.hold && t.prom >= cfg.prom) {
+      t.flagged = true; addHist(t.f);
+      try { navigator.vibrate && navigator.vibrate(120); } catch (e) {}
+    }
+  }
+  tracks = tracks.filter(t => t.miss < (t.flagged ? 0.6 : 0.3));
+}
+
+/* ---------- medidor ---------- */
+function levels(now) {
+  analyser.getFloatTimeDomainData(timeBuf);
+  let s = 0;
+  for (let i = 0; i < timeBuf.length; i++) s += timeBuf[i] * timeBuf[i];
+  const dbZ = 10 * Math.log10(s / timeBuf.length + 1e-20);
+  let pz = 0, pa = 0;
+  for (let i = 1; i < nBins; i++) {
+    const p = Math.pow(10, spec[i] / 10);
+    pz += p; pa += p * Math.pow(10, aw[i] / 10);
+  }
+  const corr = pa > 0 && pz > 0 ? 10 * Math.log10(pa / pz) : 0;
+  const L = dbZ + corr + cfg.cal;
+  if (L > splMax) splMax = L;
+  if (now - lastLeqPush > 200) {
+    lastLeqPush = now;
+    leqBuf.push([now, Math.pow(10, L / 10)]);
+    while (leqBuf.length && now - leqBuf[0][0] > 900000) leqBuf.shift();
+  }
+  return L;
+}
+function leq(now, win) {
+  let s = 0, n = 0;
+  for (let i = leqBuf.length - 1; i >= 0 && now - leqBuf[i][0] <= win; i--) { s += leqBuf[i][1]; n++; }
+  return n ? 10 * Math.log10(s / n) : NaN;
+}
+
+/* ---------- desenho ---------- */
+const cv = $("#spec"), g = cv.getContext("2d");
+let W = 0, H = 0, dpr = 1, PAD_L = 34, PAD_B = 20;
+const F0 = 20, F1 = 20000, DB0 = -110, DB1 = -10;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let C = {};
+function layoutCanvas() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const r = cv.getBoundingClientRect();
+  W = Math.round(r.width * dpr); H = Math.round(r.height * dpr);
+  cv.width = W; cv.height = H;
+  C = { trace: css("--trace"), hot: css("--hot"), amber: css("--amber"), mute: css("--mute"), line: css("--line") };
+  if (!running) drawIdle();
+}
+window.addEventListener("resize", layoutCanvas);
+const xOf = f => PAD_L * dpr + Math.log(f / F0) / Math.log(F1 / F0) * (W - PAD_L * dpr);
+const fOf = x => F0 * Math.pow(F1 / F0, (x - PAD_L * dpr) / (W - PAD_L * dpr));
+const yOf = db => (H - PAD_B * dpr) * (1 - (db - DB0) / (DB1 - DB0));
+
+function grid() {
+  g.fillStyle = "#0a0d0e"; g.fillRect(0, 0, W, H);
+  g.lineWidth = 1; g.font = `${10 * dpr}px ${css("--f-mono")}`;
+  g.strokeStyle = C.line; g.fillStyle = C.mute;
+  g.textAlign = "right"; g.textBaseline = "middle";
+  for (let db = -100; db <= -20; db += 20) {
+    const y = Math.round(yOf(db)) + 0.5;
+    g.beginPath(); g.moveTo(PAD_L * dpr, y); g.lineTo(W, y); g.stroke();
+    g.fillText(db, (PAD_L - 6) * dpr, y);
+  }
+  g.textAlign = "center"; g.textBaseline = "alphabetic";
+  for (const f of [31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]) {
+    const x = Math.round(xOf(f)) + 0.5;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H - PAD_B * dpr); g.stroke();
+    g.fillText(fmtBand(f), x, H - 5 * dpr);
+  }
+}
+function drawIdle() {
+  if (!W) return;
+  grid();
+  g.fillStyle = C.mute; g.textAlign = "center"; g.font = `${13 * dpr}px ${css("--f-body")}`;
+  g.fillText("O gráfico aparece quando o microfone estiver ligado", (W + PAD_L * dpr) / 2, (H - PAD_B * dpr) / 2);
+}
+function valAt(arr, f) {
+  const x = f / binHz, i = Math.floor(x), t = x - i;
+  if (i + 1 >= nBins) return arr[nBins - 1];
+  return arr[i] * (1 - t) + arr[i + 1] * t;
+}
+function curve(arr) {
+  g.beginPath();
+  for (let x = Math.ceil(PAD_L * dpr); x <= W; x++) {
+    const fa = fOf(x), fb = fOf(x + 1);
+    const ia = Math.floor(fa / binHz), ib = Math.floor(fb / binHz);
+    let v;
+    if (ib > ia + 1) { v = -200; for (let i = ia; i <= ib && i < nBins; i++) if (arr[i] > v) v = arr[i]; }
+    else v = valAt(arr, fa);
+    const y = Math.max(0, Math.min(H - PAD_B * dpr, yOf(v)));
+    x === Math.ceil(PAD_L * dpr) ? g.moveTo(x, y) : g.lineTo(x, y);
+  }
+}
+function draw() {
+  grid();
+  g.lineWidth = 1 * dpr; g.strokeStyle = C.mute; g.globalAlpha = 0.6;
+  curve(peak); g.stroke(); g.globalAlpha = 1;
+  curve(spec);
+  g.lineTo(W, H - PAD_B * dpr); g.lineTo(PAD_L * dpr, H - PAD_B * dpr); g.closePath();
+  g.fillStyle = "rgba(127,211,230,.13)"; g.fill();
+  curve(spec); g.strokeStyle = C.trace; g.lineWidth = 1.5 * dpr; g.stroke();
+  g.textAlign = "center"; g.font = `600 ${11 * dpr}px ${css("--f-mono")}`;
+  for (const t of tracks) {
+    if (t.age <= 0.05) continue;
+    const x = xOf(t.f), y = yOf(t.v);
+    if (t.flagged) {
+      g.strokeStyle = C.hot; g.lineWidth = 2 * dpr;
+      g.beginPath(); g.moveTo(x, 14 * dpr); g.lineTo(x, H - PAD_B * dpr); g.stroke();
+      g.fillStyle = C.hot; g.fillText(fmtHz(t.f), Math.min(W - 30 * dpr, Math.max(PAD_L * dpr + 30 * dpr, x)), 11 * dpr);
+    } else {
+      g.fillStyle = C.amber;
+      g.beginPath(); g.moveTo(x, y - 6 * dpr); g.lineTo(x - 5 * dpr, y - 14 * dpr); g.lineTo(x + 5 * dpr, y - 14 * dpr); g.closePath(); g.fill();
+    }
+  }
+}
+
+/* ---------- painel ---------- */
+function idleAlert() {
+  $("#alert").className = "panel";
+  $("#alertLabel").textContent = "Desligado";
+  $("#alertFreq").textContent = "Pronto";
+  $("#alertMeta").textContent = "";
+  $("#alertAdvice").innerHTML = "Toque em <b>Ligar microfone</b> para voltar a monitorar.";
+  $("#spl").textContent = "--";
+  $("#barMask").style.width = "100%";
+  drawIdle();
+}
+let shownKey = "";
+function updateAlert() {
+  const hot = tracks.filter(t => t.flagged).sort((a, b) => b.v - a.v);
+  const lamp = $("#lamp");
+  if (hot.length) {
+    const t = hot[0], band = nearestBand(t.f);
+    lamp.className = "lamp alarm";
+    $("#alert").className = "panel hot";
+    $("#alertLabel").textContent = hot.length > 1 ? `Microfonia agora · ${hot.length} frequências` : "Microfonia agora";
+    $("#alertFreq").textContent = fmtHz(t.f);
+    const key = band + "|" + hot.length;
+    if (key !== shownKey) {
+      shownKey = key;
+      const extra = hot.slice(1, 3).map(h => fmtHz(h.f)).join(", ");
+      $("#alertMeta").innerHTML = `<span class="chip">EQ gráfico <b>${fmtBand(band)}</b></span><span class="chip">Nota <b>${noteOf(t.f)}</b></span>` + (extra ? `<span class="chip">Também: <b>${extra}</b></span>` : "");
+      $("#alertAdvice").innerHTML = adviceFor(t.f) + `<br><small>Se não resolver: baixe o ganho do microfone ou afaste ele da caixa/retorno.</small>`;
+    }
+  } else {
+    lamp.className = "lamp on";
+    if (shownKey !== "calm") {
+      shownKey = "calm";
+      $("#alert").className = "panel calm";
+      $("#alertLabel").textContent = demo ? "Demonstração · aguarde o apito" : "Monitorando";
+      $("#alertFreq").textContent = "Sem microfonia";
+      $("#alertMeta").textContent = "";
+      $("#alertAdvice").innerHTML = "Triângulos âmbar no gráfico são picos suspeitos sendo observados. Se ficarem parados tempo suficiente, viram alerta vermelho.";
+    }
+  }
+}
+function updateMeter(L, now) {
+  const show = v => isFinite(v) ? v.toFixed(0) : "--";
+  $("#spl").textContent = show(L);
+  const pct = v => Math.max(0, Math.min(100, (v - 60) / 50 * 100));
+  $("#barMask").style.width = (100 - pct(L)) + "%";
+  $("#barPeak").style.left = "calc(" + pct(splMax) + "% - 1px)";
+  $("#sMax").textContent = show(splMax);
+  $("#sLeq").textContent = show(leq(now, 60000));
+  $("#sLeq15").textContent = show(leq(now, 900000));
+}
+
+let lastFrame = 0, lastUi = 0;
+function loop(now) {
+  if (!running) return;
+  const dt = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now;
+  analyser.getFloatFrequencyData(spec);
+  const decay = 18 * dt;
+  for (let i = 0; i < nBins; i++) {
+    if (!isFinite(spec[i])) spec[i] = -130;
+    peak[i] = spec[i] > peak[i] ? spec[i] : peak[i] - decay;
+  }
+  detect(dt);
+  const L = levels(now);
+  draw();
+  if (now - lastUi > 120) { lastUi = now; updateAlert(); updateMeter(L, now); }
+  requestAnimationFrame(loop);
+}
+
+layoutCanvas();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (!running) drawIdle(); });
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+})();
+
+/* ================= Medir pela foto ================= */
+(() => {
+const $ = s => document.querySelector(s);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const num = (v, d = 2) => v.toFixed(d).replace(".", ",");
+const cv = $("#photo"), g = cv.getContext("2d");
+let img = null, iw = 0, ih = 0, scale = 1, dpr = 1;
+let mode = "ref", lines = [], pending = null, drag = null;
+let C = {};
+
+const HINTS = {
+  ref: "Toque numa ponta de algo com tamanho conhecido (porta, folha A4, trena) e depois na outra ponta. Arraste as bolinhas para acertar.",
+  len: "Toque nas duas pontas do que quer medir, por exemplo do chão até o meio da caixa. Só vale para coisas na mesma parede ou distância da referência.",
+  ang: "Numa foto de lado da caixa, marque a frente da caixa: primeiro em cima, depois embaixo. O app mostra quantos graus ela está inclinada."
+};
+
+/* ---------- abas ---------- */
+function showView(name) {
+  const med = name === "medir";
+  $("#viewMic").hidden = med; $("#viewMed").hidden = !med;
+  $("#tabMic").setAttribute("aria-selected", String(!med));
+  $("#tabMed").setAttribute("aria-selected", String(med));
+  if (med) layout();
+}
+$("#tabMic").addEventListener("click", () => { history.replaceState(null, "", location.pathname); showView("mic"); });
+$("#tabMed").addEventListener("click", () => { location.hash = "medir"; showView("medir"); });
+window.addEventListener("hashchange", () => showView(location.hash === "#medir" ? "medir" : "mic"));
+
+/* ---------- modo ---------- */
+function setMode(m) {
+  mode = m; pending = null;
+  document.querySelectorAll(".segb").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  $("#hint").textContent = HINTS[m];
+  render();
+}
+document.querySelectorAll(".segb").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
+
+/* ---------- referência ---------- */
+$("#refPreset").addEventListener("change", e => {
+  if (e.target.value) $("#refLen").value = e.target.value;
+  else { $("#refLen").focus(); $("#refLen").select(); }
+  refresh();
+});
+$("#refLen").addEventListener("input", refresh);
+const refLen = () => { const v = parseFloat($("#refLen").value); return v > 0 ? v : NaN; };
+
+/* ---------- geometria ---------- */
+const dist = l => Math.hypot(l.b.x - l.a.x, l.b.y - l.a.y);
+function mPerPx() {
+  const r = lines.find(l => l.type === "ref");
+  if (!r || dist(r) < 2) return NaN;
+  return refLen() / dist(r);
+}
+function tiltDeg(l) {
+  const dx = Math.abs(l.b.x - l.a.x), dy = Math.abs(l.b.y - l.a.y);
+  return Math.atan2(dx, dy) * 180 / Math.PI; // 0 = vertical
+}
+function valueOf(l) {
+  if (l.type === "ref") return "Ref. " + num(refLen() || 0) + " m";
+  if (l.type === "ang") { const t = tiltDeg(l); return Math.round(t) + "° da vertical"; }
+  const k = mPerPx();
+  return isFinite(k) ? "≈ " + num(dist(l) * k) + " m" : "marque a referência";
+}
+
+/* ---------- foto ---------- */
+function setImage(src, preset) {
+  const im = new Image();
+  im.onload = () => {
+    img = im; iw = im.naturalWidth; ih = im.naturalHeight;
+    lines = preset ? preset(iw, ih) : [];
+    pending = null;
+    layout(); refresh();
+  };
+  im.src = src;
+}
+$("#photoIn").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  setImage(URL.createObjectURL(f));
+  setMode("ref");
+  e.target.value = "";
+});
+$("#btnExample").addEventListener("click", () => {
+  setImage(exampleImage(), () => [
+    { type: "ref", a: { x: 266, y: 420 }, b: { x: 266, y: 840 } },
+    { type: "len", a: { x: 1010, y: 840 }, b: { x: 1010, y: 360 } },
+    { type: "ang", a: { x: 853, y: 309 }, b: { x: 878, y: 426 } }
+  ]);
+  $("#refPreset").value = "2.10"; $("#refLen").value = "2.10";
+});
+
+/* Desenho de exemplo: vista de lado, porta de 2,10 m e caixa presa num pedestal, inclinada 12° para baixo. Escala 200 px por metro. */
+function exampleImage() {
+  const c = document.createElement("canvas"); c.width = 1200; c.height = 900;
+  const x = c.getContext("2d");
+  const wall = x.createLinearGradient(0, 0, 0, 840); wall.addColorStop(0, "#d9d3c7"); wall.addColorStop(1, "#c9c1b2");
+  x.fillStyle = wall; x.fillRect(0, 0, 1200, 840);
+  x.fillStyle = "#8a6f55"; x.fillRect(0, 840, 1200, 60);
+  x.fillStyle = "#7a5a3c"; x.fillRect(100, 420, 166, 420);
+  x.fillStyle = "#6a4c31"; x.fillRect(114, 434, 138, 180); x.fillRect(114, 630, 138, 196);
+  x.fillStyle = "#d8b25a"; x.beginPath(); x.arc(240, 640, 7, 0, 7); x.fill();
+  x.fillStyle = "#3a3d40"; x.fillRect(1004, 380, 12, 460); x.fillRect(960, 830, 100, 10);
+  x.save(); x.translate(900, 360); x.rotate(-12 * Math.PI / 180);
+  x.fillStyle = "#24282b"; x.fillRect(-35, -60, 70, 120);
+  x.fillStyle = "#15181a"; x.fillRect(-35, -60, 10, 120);
+  x.restore();
+  x.strokeStyle = "#3a3d40"; x.lineWidth = 8; x.beginPath(); x.moveTo(930, 362); x.lineTo(1010, 380); x.stroke();
+  x.fillStyle = "#5c5348"; x.font = "600 26px system-ui, sans-serif"; x.fillText("EXEMPLO · vista de lado", 40, 60);
+  return c.toDataURL("image/png");
+}
+
+/* ---------- desenho ---------- */
+function layout() {
+  if (!img || $("#viewMed").hidden) return;
+  cv.hidden = false; $("#photoEmpty").hidden = true;
+  const boxW = cv.parentElement.clientWidth;
+  const maxH = Math.max(260, window.innerHeight * 0.7);
+  scale = Math.min(boxW / iw, maxH / ih);
+  const w = Math.round(iw * scale), h = Math.round(ih * scale);
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.style.width = w + "px"; cv.style.height = h + "px";
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  C = { ref: css("--trace"), len: css("--amber"), ang: css("--ok"), fg: css("--fg"), bg: css("--bg"), font: css("--f-mono") };
+  render();
+}
+window.addEventListener("resize", layout);
+
+function pill(text, x, y, color) {
+  g.font = `600 13px ${C.font}`;
+  const w = g.measureText(text).width + 12, h = 22;
+  const cw = cv.width / dpr, ch = cv.height / dpr;
+  const px = Math.min(cw - w - 2, Math.max(2, x - w / 2)), py = Math.min(ch - h - 2, Math.max(2, y - h - 10));
+  g.fillStyle = "rgba(10,13,14,.85)"; g.fillRect(px, py, w, h);
+  g.strokeStyle = color; g.lineWidth = 1; g.strokeRect(px + .5, py + .5, w - 1, h - 1);
+  g.fillStyle = color; g.textBaseline = "middle"; g.textAlign = "left"; g.fillText(text, px + 6, py + h / 2 + 1);
+}
+function dot(p, color) {
+  g.beginPath(); g.arc(p.x * scale, p.y * scale, 7, 0, Math.PI * 2);
+  g.fillStyle = color; g.fill(); g.lineWidth = 2; g.strokeStyle = "#fff"; g.stroke();
+}
+function render() {
+  if (!img || cv.hidden) return;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.drawImage(img, 0, 0, iw * scale, ih * scale);
+  for (const l of lines) {
+    const col = C[l.type];
+    g.strokeStyle = "rgba(0,0,0,.55)"; g.lineWidth = 5;
+    g.beginPath(); g.moveTo(l.a.x * scale, l.a.y * scale); g.lineTo(l.b.x * scale, l.b.y * scale); g.stroke();
+    g.strokeStyle = col; g.lineWidth = 3; g.stroke();
+    dot(l.a, col); dot(l.b, col);
+    pill(valueOf(l), (l.a.x + l.b.x) / 2 * scale, Math.min(l.a.y, l.b.y) * scale + Math.abs(l.b.y - l.a.y) * scale / 2, col);
+  }
+  if (pending) dot(pending.a, C[pending.type]);
+  if (drag) loupe(drag.pt);
+}
+function loupe(p) {
+  const R = 62, Z = 3, cw = cv.width / dpr;
+  const sx = p.x * scale, sy = p.y * scale;
+  const cx = sx > cw / 2 ? R + 8 : cw - R - 8, cy = R + 8;
+  g.save();
+  g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.closePath();
+  g.fillStyle = "#000"; g.fill(); g.clip();
+  const src = R / Z / scale;
+  g.drawImage(img, p.x - src, p.y - src, src * 2, src * 2, cx - R, cy - R, R * 2, R * 2);
+  g.strokeStyle = "#fff"; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(cx - R, cy); g.lineTo(cx + R, cy); g.moveTo(cx, cy - R); g.lineTo(cx, cy + R); g.stroke();
+  g.restore();
+  g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.strokeStyle = C.fg; g.lineWidth = 2; g.stroke();
+}
+
+/* ---------- toque e arraste ---------- */
+function toImg(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: Math.max(0, Math.min(iw, (e.clientX - r.left) / scale)), y: Math.max(0, Math.min(ih, (e.clientY - r.top) / scale)) };
+}
+cv.addEventListener("pointerdown", e => {
+  if (!img) return;
+  e.preventDefault();
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+  const p = toImg(e), hit = 22 / scale;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    for (const k of ["a", "b"]) {
+      const q = lines[i][k];
+      if (Math.hypot(q.x - p.x, q.y - p.y) < hit) { drag = { pt: q }; render(); return; }
+    }
+  }
+  if (pending && pending.type === mode) {
+    const l = { type: mode, a: pending.a, b: p };
+    if (mode === "ref") lines = lines.filter(x => x.type !== "ref");
+    lines.push(l); pending = null; drag = { pt: l.b };
+  } else {
+    pending = { type: mode, a: p }; drag = { pt: pending.a };
+  }
+  render(); refresh();
+});
+cv.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const p = toImg(e); drag.pt.x = p.x; drag.pt.y = p.y;
+  render(); refresh();
+});
+const endDrag = () => { if (drag) { drag = null; render(); } };
+cv.addEventListener("pointerup", endDrag);
+cv.addEventListener("pointercancel", endDrag);
+
+/* ---------- lista ---------- */
+const NAMES = { ref: "Referência", len: "Medida", ang: "Inclinação" };
+function refresh() {
+  const ul = $("#lines"); ul.textContent = "";
+  if (!lines.length) {
+    const li = document.createElement("li"); li.className = "empty";
+    li.textContent = img ? "Escolha Referência e marque as duas pontas da porta, folha ou trena." : "Nenhuma medida ainda.";
+    ul.append(li);
+  }
+  const count = { ref: 0, len: 0, ang: 0 };
+  lines.forEach((l, i) => {
+    count[l.type]++;
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="sw"></span><span></span><span class="lv"></span><button class="del" aria-label="Apagar">×</button>`;
+    li.children[0].style.background = `var(--${l.type === "ref" ? "trace" : l.type === "len" ? "amber" : "ok"})`;
+    li.children[1].textContent = NAMES[l.type] + (l.type === "ref" ? "" : " " + count[l.type]);
+    li.children[2].textContent = valueOf(l);
+    li.children[3].addEventListener("click", () => { lines.splice(i, 1); render(); refresh(); });
+    ul.append(li);
+  });
+  $("#useTilt").hidden = !lines.some(l => l.type === "ang");
+  render(); calc();
+}
+$("#btnClearLines").addEventListener("click", () => { lines = []; pending = null; render(); refresh(); });
+$("#useTilt").addEventListener("click", () => {
+  const a = [...lines].reverse().find(l => l.type === "ang");
+  if (a) { $("#cTilt").value = Math.round(tiltDeg(a)); calc(); }
+});
+
+/* ---------- contas rápidas ---------- */
+const val = id => parseFloat($(id).value);
+function calc() {
+  const h = val("#cH"), t = val("#cTilt"), ear = val("#cEar"), d2 = val("#cD2"), d1 = val("#cD1");
+  const drop = h - ear;
+  let aim;
+  if (!(drop > 0)) aim = "A caixa está na altura do ouvido ou abaixo. O som bate nas primeiras pessoas e não chega bem no fundo: suba a caixa.";
+  else if (!(t > 0)) aim = `Caixa reta (0°): o centro do som passa <b>${num(drop, 1)} m</b> acima do ouvido em toda a igreja e vai bater na parede do fundo.`;
+  else {
+    const d = drop / Math.tan(t * Math.PI / 180);
+    aim = `O centro do som chega na altura do ouvido a <b>≈ ${num(d, 1)} m</b> da caixa.`;
+    if (d2 > 0) {
+      const ideal = Math.atan(drop / (d2 * 0.7)) * 180 / Math.PI;
+      aim += ` Para cobrir bem até o fundo (${num(d2, 1)} m), mire em uns 70% da igreja: inclinação de <b>≈ ${Math.round(ideal)}°</b>.`;
+      if (d < d2 * 0.4) aim += " Do jeito que está, o som cai cedo demais e o fundo fica fraco.";
+      else if (d > d2) aim += " Do jeito que está, o som passa por cima do público e bate na parede do fundo (eco).";
+    }
+  }
+  $("#rAim").innerHTML = aim;
+
+  if (d1 > 0 && d2 > 0) {
+    const diff = 20 * Math.log10(d2 / d1);
+    let txt = `O fundo ouve <b>≈ ${Math.round(diff)} dB a menos</b> que a 1ª fila.`;
+    txt += diff <= 6 ? " Diferença boa." : diff <= 10 ? " Aceitável. Subir ou inclinar melhor a caixa ajuda a equilibrar." : " Diferença grande: a frente fica alta demais e o fundo não entende. Suba a caixa, mire mais para o fundo ou use caixa de reforço no meio da igreja.";
+    $("#rDb").innerHTML = txt;
+  } else $("#rDb").textContent = "";
+
+  const dd = val("#cDd");
+  if (dd > 0) {
+    const ms = dd / 343 * 1000;
+    $("#rDelay").innerHTML = `O som leva <b>≈ ${Math.round(ms)} ms</b> para andar ${num(dd, 1)} m. Ajuste o delay da caixa de reforço para <b>≈ ${Math.round(ms + 5)} a ${Math.round(ms + 10)} ms</b>, para o som parecer vir da frente. Precisa de processador ou caixa com delay; sem isso, deixe o reforço mais baixo.`;
+  } else $("#rDelay").textContent = "";
+}
+["#cH", "#cTilt", "#cEar", "#cD1", "#cD2", "#cDd"].forEach(id => $(id).addEventListener("input", calc));
+
+setMode("ref");
+refresh();
+showView(location.hash === "#medir" ? "medir" : "mic");
+})();
+</script>
+</body>
+</html>
