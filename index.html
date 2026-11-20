@@ -38,6 +38,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 .controls{display:flex;gap:8px;flex-wrap:wrap}
 .btn{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer;min-height:44px}
 .btn:hover{border-color:var(--mute)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
 .btn:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 .btn.primary{background:var(--amber);color:#1b1404;border-color:var(--amber)}
 .btn.stop{background:var(--hot);color:#1f0705;border-color:var(--hot)}
@@ -144,7 +145,40 @@ footer{color:var(--mute);font-size:12px;text-align:center}
 .calc input{width:110px;color:var(--fg)}
 .calc .res{margin:0;font-size:15px}
 .calc .res b{color:var(--amber);font-family:var(--f-mono)}
-.linkbtn{background:none;border:0;color:var(--trace);text-decoration:underline;cursor:pointer;padding:0;font-size:13px;align-self:flex-start}
+.linkbtn{background:none;border:0;color:var(--trace);text-decoration:underline;cursor:pointer;padding:0;font-size:inherit;align-self:flex-start}
+a{color:var(--trace)}
+.status{margin:0 0 10px;font-size:14px;padding:8px 10px;border-radius:8px;background:var(--panel-2);border-left:3px solid var(--line)}
+.status.ok{border-left-color:var(--ok)}
+.status.warn{border-left-color:var(--amber)}
+.check{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;color:var(--mute);cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--amber)}
+#lines .use{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;color:var(--fg)}
+#lines li{grid-template-columns:auto minmax(0,1fr) auto auto auto}
+ol.tips.small{font-size:14px;margin-top:12px}
+
+/* inclinômetro */
+.incWrap{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:10px 0 14px}
+.incDial{position:relative;width:120px;height:120px;border-radius:50%;background:var(--panel-2);border:1px solid var(--line);flex:none}
+.incFace{position:absolute;left:50%;top:14px;bottom:14px;width:0;border-left:2px dashed var(--line)}
+.incArrow{position:absolute;left:18px;right:18px;top:50%;height:4px;margin-top:-2px;background:var(--amber);border-radius:2px;transform-origin:50% 50%;transition:transform .12s linear}
+.incArrow::after{content:"";position:absolute;right:-4px;top:-6px;border-left:12px solid var(--amber);border-top:8px solid transparent;border-bottom:8px solid transparent}
+.incRead{display:flex;flex-direction:column;gap:6px;min-width:0}
+.incDir{font-size:15px;color:var(--mute)}
+.chip.locked{border-color:var(--ok);color:var(--ok)}
+
+/* AR */
+.arResult{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.arResult .big{font-size:40px;color:var(--amber)}
+.arOverlay{position:fixed;inset:0;z-index:50;background:transparent;color:#fff;font-family:var(--f-body)}
+.arSvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.arCross{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border:3px solid rgba(255,255,255,.6);border-radius:50%}
+.arCross::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#fff}
+.arCross.hit{border-color:var(--ok)}
+.arTop{position:absolute;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top,0px));background:rgba(0,0,0,.65);padding:10px 14px;border-radius:10px;font:600 18px/1.3 var(--f-body);text-align:center}
+.arBar{position:absolute;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;justify-content:center}
+.arBar .btn{flex:1;max-width:180px;min-height:54px}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-weight:600;z-index:40;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgba(0,0,0,.4)}
 @media (prefers-reduced-motion:reduce){.lamp.alarm{animation:none}.bar .mask{transition:none}}
 </style>
 </head>
@@ -161,6 +195,7 @@ footer{color:var(--mute);font-size:12px;text-align:center}
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" id="tabMic" aria-selected="true" aria-controls="viewMic">Microfonia</button>
     <button class="tab" role="tab" id="tabMed" aria-selected="false" aria-controls="viewMed">Medir pela foto</button>
+    <button class="tab" role="tab" id="tabCx" aria-selected="false" aria-controls="viewCx">Caixas</button>
   </nav>
 
   <div class="view" id="viewMic" role="tabpanel" aria-labelledby="tabMic">
@@ -247,34 +282,99 @@ footer{color:var(--mute);font-size:12px;text-align:center}
             <button class="segb" data-mode="ang"><i style="background:var(--ok)"></i>Inclinação</button>
           </div>
           <p class="hint" id="hint"></p>
+          <p class="status" id="markerMsg" hidden></p>
           <div class="photoBox">
             <canvas id="photo" hidden aria-label="Foto para medir"></canvas>
             <div class="photoEmpty" id="photoEmpty">Toque em <b>Tirar foto</b> para fotografar as caixas, o palco ou a igreja, ou escolha uma foto da <b>Galeria</b>. Para experimentar antes, toque em <b>Usar exemplo</b>.</div>
           </div>
+          <label class="check" for="snapOn"><input type="checkbox" id="snapOn" checked> Grudar o ponto na borda mais próxima ao soltar o dedo</label>
         </section>
       </div>
 
       <div class="col">
         <section class="panel">
-          <span class="label">Tamanho da referência</span>
+          <span class="label">Referência de tamanho</span>
           <div class="refRow">
             <select id="refPreset" aria-label="Objeto de referência">
+              <option value="marker">Marcador impresso (14 cm)</option>
               <option value="2.10">Porta, altura (2,10 m)</option>
               <option value="0.80">Porta, largura (0,80 m)</option>
               <option value="0.297">Folha A4, lado maior (0,297 m)</option>
               <option value="1.00">Trena ou fita de 1 m</option>
               <option value="">Outro (digite o tamanho)</option>
             </select>
-            <input type="number" id="refLen" step="0.01" min="0.01" value="2.10" aria-label="Tamanho da referência em metros"><span>m</span>
+            <input type="number" id="refLen" step="0.001" min="0.01" value="0.14" aria-label="Tamanho da referência em metros"><span>m</span>
           </div>
-          <p class="note">A medida só fica certa para coisas na mesma parede ou mesma distância da referência. Com uma pessoa de altura conhecida, escolha "Outro".</p>
+          <p class="note">O jeito mais fácil e preciso é o <b>marcador impresso</b>: cole a folha na parede ou na caixa e tire a foto. O app acha o marcador sozinho e ainda corrige foto tirada um pouco de lado. <a href="marcador.html" target="_blank" rel="noopener">Abrir folha para imprimir</a>.</p>
+          <p class="note">A medida só fica certa para coisas na mesma parede ou mesma distância da referência.</p>
         </section>
 
         <section class="panel">
           <div class="histHead"><span class="label">Medidas</span><button class="btn small" id="btnClearLines">Limpar</button></div>
           <ul id="lines"></ul>
         </section>
+      </div>
+    </div>
 
+    <details>
+      <summary>Como tirar uma foto boa para medir</summary>
+      <ol class="tips">
+        <li><b>Use o marcador impresso</b> colado na mesma parede ou na própria caixa. Até uns 5 m de distância o app costuma achar sozinho. Mais longe, use o zoom.</li>
+        <li><b>Foto reta:</b> celular em pé, de frente para o que vai medir. Com o marcador, um pouco de lado ainda funciona.</li>
+        <li><b>De longe com zoom</b> é melhor que de perto: a lente do celular entorta as bordas da foto.</li>
+        <li><b>Referência no mesmo plano:</b> o marcador, a porta ou a trena precisa estar na mesma parede ou distância do que você vai medir.</li>
+        <li><b>Inclinação e distâncias no chão</b> ficam mais precisas na aba <b>Caixas</b>, com o sensor e a câmera AR.</li>
+      </ol>
+    </details>
+  </div>
+
+  <div class="view" id="viewCx" role="tabpanel" aria-labelledby="tabCx" hidden>
+    <div class="grid">
+      <div class="col">
+        <section class="panel">
+          <span class="label">Inclinômetro · sensor do celular</span>
+          <div class="incWrap">
+            <div class="incDial" aria-hidden="true">
+              <div class="incFace"></div>
+              <div class="incArrow" id="incArrow"></div>
+            </div>
+            <div class="incRead">
+              <div class="big" id="incVal">--</div>
+              <div class="incDir" id="incDir">Desligado</div>
+              <div class="chip" id="incState" hidden></div>
+            </div>
+          </div>
+          <div class="controls">
+            <button class="btn primary" id="btnInc">Ligar inclinômetro</button>
+            <button class="btn" id="btnIncAgain" hidden>Medir de novo</button>
+            <button class="btn" id="btnIncUse" hidden>Usar nas contas</button>
+          </div>
+          <ol class="tips small">
+            <li>Encoste as <b>costas do celular</b> na frente da caixa (na tela/grade), com o celular <b>em pé</b>.</li>
+            <li>Segure parado. Quando a medida estabilizar, o celular vibra e o número <b>trava</b>. Pode tirar o celular da caixa e ler com calma.</li>
+            <li>Se a caixa aponta para baixo e o app diz "para cima", o celular está virado ao contrário.</li>
+          </ol>
+          <p class="note">Precisão de cerca de 1°. Para conferir, encoste o celular no batente de uma porta (que é reto) e toque em <button class="linkbtn" id="btnIncZero">Calibrar no zero</button>.</p>
+          <p class="note err" id="incMsg" hidden></p>
+        </section>
+
+        <section class="panel">
+          <span class="label">Distância no chão · câmera AR</span>
+          <p class="hint">Aponte a câmera para o chão, mire no começo e toque em <b>Marcar ponto</b>. Ande até o fim e marque de novo. Bom para medir da caixa até a 1ª fila e até o último banco.</p>
+          <div class="controls"><button class="btn primary" id="btnAR">Abrir medição AR</button></div>
+          <p class="note" id="arMsg"></p>
+          <div id="arResult" class="arResult" hidden>
+            <div class="big" id="arVal">--</div>
+            <div class="controls">
+              <button class="btn small" data-ar-to="cD1">Usar como 1ª fila</button>
+              <button class="btn small" data-ar-to="cD2">Usar como último banco</button>
+              <button class="btn small" data-ar-to="cDd">Usar como distância do reforço</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="col">
         <section class="panel">
           <span class="label">Contas rápidas</span>
           <div class="calc">
@@ -284,7 +384,6 @@ footer{color:var(--mute);font-size:12px;text-align:center}
               <label for="cTilt">Inclinação para baixo (°)<input type="number" id="cTilt" step="1" value="10"></label>
               <label for="cEar">Altura do ouvido (m)<input type="number" id="cEar" step="0.1" value="1.2"></label>
             </div>
-            <button class="linkbtn" id="useTilt" hidden>Usar a inclinação medida na foto</button>
             <p class="res" id="rAim"></p>
           </div>
           <div class="calc">
@@ -302,21 +401,24 @@ footer{color:var(--mute);font-size:12px;text-align:center}
             </div>
             <p class="res" id="rDelay"></p>
           </div>
+          <p class="note">Os números podem vir direto do inclinômetro, da medição AR ou das medidas da foto (botão <b>Usar</b> em cada medida).</p>
         </section>
       </div>
     </div>
-
-    <details>
-      <summary>Como tirar uma foto boa para medir</summary>
-      <ol class="tips">
-        <li><b>Foto reta:</b> celular em pé e sem inclinar, de frente para a parede ou caixa que vai medir.</li>
-        <li><b>De longe com zoom</b> é melhor que de perto: a lente do celular entorta as bordas da foto.</li>
-        <li><b>Referência no mesmo plano:</b> a porta, a folha A4 ou a trena precisa estar na mesma parede ou distância do que você vai medir.</li>
-        <li><b>Inclinação da caixa:</b> tire a foto exatamente de lado. Marque a frente da caixa de cima para baixo.</li>
-        <li><b>Profundidade da igreja</b> (do altar até o fundo) não dá para medir bem por foto. Conte os passos: 1 passo normal ≈ 0,75 m.</li>
-      </ol>
-    </details>
   </div>
+
+  <div id="arOverlay" class="arOverlay" hidden>
+    <svg id="arSvg" class="arSvg"></svg>
+    <div class="arCross" id="arCross"></div>
+    <div class="arTop" id="arText">Mova o celular devagar apontando para o chão…</div>
+    <div class="arBar">
+      <button class="btn" id="arUndo">Desfazer</button>
+      <button class="btn primary" id="arMark">Marcar ponto</button>
+      <button class="btn" id="arExit">Sair</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
 
   <footer>Funciona melhor com o celular fora do bolso, sem capinha cobrindo o microfone e com a tela ligada.</footer>
 </div>
@@ -740,280 +842,11 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 })();
 
-/* ================= Medir pela foto ================= */
-(() => {
-const $ = s => document.querySelector(s);
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const num = (v, d = 2) => v.toFixed(d).replace(".", ",");
-const cv = $("#photo"), g = cv.getContext("2d");
-let img = null, iw = 0, ih = 0, scale = 1, dpr = 1;
-let mode = "ref", lines = [], pending = null, drag = null;
-let C = {};
-
-const HINTS = {
-  ref: "Toque numa ponta de algo com tamanho conhecido (porta, folha A4, trena) e depois na outra ponta. Arraste as bolinhas para acertar.",
-  len: "Toque nas duas pontas do que quer medir, por exemplo do chão até o meio da caixa. Só vale para coisas na mesma parede ou distância da referência.",
-  ang: "Numa foto de lado da caixa, marque a frente da caixa: primeiro em cima, depois embaixo. O app mostra quantos graus ela está inclinada."
-};
-
-/* ---------- abas ---------- */
-function showView(name) {
-  const med = name === "medir";
-  $("#viewMic").hidden = med; $("#viewMed").hidden = !med;
-  $("#tabMic").setAttribute("aria-selected", String(!med));
-  $("#tabMed").setAttribute("aria-selected", String(med));
-  if (med) layout();
-}
-$("#tabMic").addEventListener("click", () => { history.replaceState(null, "", location.pathname); showView("mic"); });
-$("#tabMed").addEventListener("click", () => { location.hash = "medir"; showView("medir"); });
-window.addEventListener("hashchange", () => showView(location.hash === "#medir" ? "medir" : "mic"));
-
-/* ---------- modo ---------- */
-function setMode(m) {
-  mode = m; pending = null;
-  document.querySelectorAll(".segb").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
-  $("#hint").textContent = HINTS[m];
-  render();
-}
-document.querySelectorAll(".segb").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
-
-/* ---------- referência ---------- */
-$("#refPreset").addEventListener("change", e => {
-  if (e.target.value) $("#refLen").value = e.target.value;
-  else { $("#refLen").focus(); $("#refLen").select(); }
-  refresh();
-});
-$("#refLen").addEventListener("input", refresh);
-const refLen = () => { const v = parseFloat($("#refLen").value); return v > 0 ? v : NaN; };
-
-/* ---------- geometria ---------- */
-const dist = l => Math.hypot(l.b.x - l.a.x, l.b.y - l.a.y);
-function mPerPx() {
-  const r = lines.find(l => l.type === "ref");
-  if (!r || dist(r) < 2) return NaN;
-  return refLen() / dist(r);
-}
-function tiltDeg(l) {
-  const dx = Math.abs(l.b.x - l.a.x), dy = Math.abs(l.b.y - l.a.y);
-  return Math.atan2(dx, dy) * 180 / Math.PI; // 0 = vertical
-}
-function valueOf(l) {
-  if (l.type === "ref") return "Ref. " + num(refLen() || 0) + " m";
-  if (l.type === "ang") { const t = tiltDeg(l); return Math.round(t) + "° da vertical"; }
-  const k = mPerPx();
-  return isFinite(k) ? "≈ " + num(dist(l) * k) + " m" : "marque a referência";
-}
-
-/* ---------- foto ---------- */
-function setImage(src, preset) {
-  const im = new Image();
-  im.onload = () => {
-    img = im; iw = im.naturalWidth; ih = im.naturalHeight;
-    lines = preset ? preset(iw, ih) : [];
-    pending = null;
-    layout(); refresh();
-  };
-  im.src = src;
-}
-function onPhoto(e) {
-  const f = e.target.files && e.target.files[0];
-  if (!f) return;
-  setImage(URL.createObjectURL(f));
-  setMode("ref");
-  e.target.value = "";
-}
-$("#photoIn").addEventListener("change", onPhoto);
-$("#cameraIn").addEventListener("change", onPhoto);
-$("#btnExample").addEventListener("click", () => {
-  setImage(exampleImage(), () => [
-    { type: "ref", a: { x: 266, y: 420 }, b: { x: 266, y: 840 } },
-    { type: "len", a: { x: 1010, y: 840 }, b: { x: 1010, y: 360 } },
-    { type: "ang", a: { x: 853, y: 309 }, b: { x: 878, y: 426 } }
-  ]);
-  $("#refPreset").value = "2.10"; $("#refLen").value = "2.10";
-});
-
-/* Desenho de exemplo: vista de lado, porta de 2,10 m e caixa presa num pedestal, inclinada 12° para baixo. Escala 200 px por metro. */
-function exampleImage() {
-  const c = document.createElement("canvas"); c.width = 1200; c.height = 900;
-  const x = c.getContext("2d");
-  const wall = x.createLinearGradient(0, 0, 0, 840); wall.addColorStop(0, "#d9d3c7"); wall.addColorStop(1, "#c9c1b2");
-  x.fillStyle = wall; x.fillRect(0, 0, 1200, 840);
-  x.fillStyle = "#8a6f55"; x.fillRect(0, 840, 1200, 60);
-  x.fillStyle = "#7a5a3c"; x.fillRect(100, 420, 166, 420);
-  x.fillStyle = "#6a4c31"; x.fillRect(114, 434, 138, 180); x.fillRect(114, 630, 138, 196);
-  x.fillStyle = "#d8b25a"; x.beginPath(); x.arc(240, 640, 7, 0, 7); x.fill();
-  x.fillStyle = "#3a3d40"; x.fillRect(1004, 380, 12, 460); x.fillRect(960, 830, 100, 10);
-  x.save(); x.translate(900, 360); x.rotate(-12 * Math.PI / 180);
-  x.fillStyle = "#24282b"; x.fillRect(-35, -60, 70, 120);
-  x.fillStyle = "#15181a"; x.fillRect(-35, -60, 10, 120);
-  x.restore();
-  x.strokeStyle = "#3a3d40"; x.lineWidth = 8; x.beginPath(); x.moveTo(930, 362); x.lineTo(1010, 380); x.stroke();
-  x.fillStyle = "#5c5348"; x.font = "600 26px system-ui, sans-serif"; x.fillText("EXEMPLO · vista de lado", 40, 60);
-  return c.toDataURL("image/png");
-}
-
-/* ---------- desenho ---------- */
-function layout() {
-  if (!img || $("#viewMed").hidden) return;
-  cv.hidden = false; $("#photoEmpty").hidden = true;
-  const boxW = cv.parentElement.clientWidth;
-  const maxH = Math.max(260, window.innerHeight * 0.7);
-  scale = Math.min(boxW / iw, maxH / ih);
-  const w = Math.round(iw * scale), h = Math.round(ih * scale);
-  dpr = Math.min(window.devicePixelRatio || 1, 2);
-  cv.style.width = w + "px"; cv.style.height = h + "px";
-  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-  C = { ref: css("--trace"), len: css("--amber"), ang: css("--ok"), fg: css("--fg"), bg: css("--bg"), font: css("--f-mono") };
-  render();
-}
-window.addEventListener("resize", layout);
-
-function pill(text, x, y, color) {
-  g.font = `600 13px ${C.font}`;
-  const w = g.measureText(text).width + 12, h = 22;
-  const cw = cv.width / dpr, ch = cv.height / dpr;
-  const px = Math.min(cw - w - 2, Math.max(2, x - w / 2)), py = Math.min(ch - h - 2, Math.max(2, y - h - 10));
-  g.fillStyle = "rgba(10,13,14,.85)"; g.fillRect(px, py, w, h);
-  g.strokeStyle = color; g.lineWidth = 1; g.strokeRect(px + .5, py + .5, w - 1, h - 1);
-  g.fillStyle = color; g.textBaseline = "middle"; g.textAlign = "left"; g.fillText(text, px + 6, py + h / 2 + 1);
-}
-function dot(p, color) {
-  g.beginPath(); g.arc(p.x * scale, p.y * scale, 7, 0, Math.PI * 2);
-  g.fillStyle = color; g.fill(); g.lineWidth = 2; g.strokeStyle = "#fff"; g.stroke();
-}
-function render() {
-  if (!img || cv.hidden) return;
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.drawImage(img, 0, 0, iw * scale, ih * scale);
-  for (const l of lines) {
-    const col = C[l.type];
-    g.strokeStyle = "rgba(0,0,0,.55)"; g.lineWidth = 5;
-    g.beginPath(); g.moveTo(l.a.x * scale, l.a.y * scale); g.lineTo(l.b.x * scale, l.b.y * scale); g.stroke();
-    g.strokeStyle = col; g.lineWidth = 3; g.stroke();
-    dot(l.a, col); dot(l.b, col);
-    pill(valueOf(l), (l.a.x + l.b.x) / 2 * scale, Math.min(l.a.y, l.b.y) * scale + Math.abs(l.b.y - l.a.y) * scale / 2, col);
-  }
-  if (pending) dot(pending.a, C[pending.type]);
-  if (drag) loupe(drag.pt);
-}
-function loupe(p) {
-  const R = 62, Z = 3, cw = cv.width / dpr;
-  const sx = p.x * scale, sy = p.y * scale;
-  const cx = sx > cw / 2 ? R + 8 : cw - R - 8, cy = R + 8;
-  g.save();
-  g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.closePath();
-  g.fillStyle = "#000"; g.fill(); g.clip();
-  const src = R / Z / scale;
-  g.drawImage(img, p.x - src, p.y - src, src * 2, src * 2, cx - R, cy - R, R * 2, R * 2);
-  g.strokeStyle = "#fff"; g.lineWidth = 1;
-  g.beginPath(); g.moveTo(cx - R, cy); g.lineTo(cx + R, cy); g.moveTo(cx, cy - R); g.lineTo(cx, cy + R); g.stroke();
-  g.restore();
-  g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.strokeStyle = C.fg; g.lineWidth = 2; g.stroke();
-}
-
-/* ---------- toque e arraste ---------- */
-function toImg(e) {
-  const r = cv.getBoundingClientRect();
-  return { x: Math.max(0, Math.min(iw, (e.clientX - r.left) / scale)), y: Math.max(0, Math.min(ih, (e.clientY - r.top) / scale)) };
-}
-cv.addEventListener("pointerdown", e => {
-  if (!img) return;
-  e.preventDefault();
-  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-  const p = toImg(e), hit = 22 / scale;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    for (const k of ["a", "b"]) {
-      const q = lines[i][k];
-      if (Math.hypot(q.x - p.x, q.y - p.y) < hit) { drag = { pt: q }; render(); return; }
-    }
-  }
-  if (pending && pending.type === mode) {
-    const l = { type: mode, a: pending.a, b: p };
-    if (mode === "ref") lines = lines.filter(x => x.type !== "ref");
-    lines.push(l); pending = null; drag = { pt: l.b };
-  } else {
-    pending = { type: mode, a: p }; drag = { pt: pending.a };
-  }
-  render(); refresh();
-});
-cv.addEventListener("pointermove", e => {
-  if (!drag) return;
-  const p = toImg(e); drag.pt.x = p.x; drag.pt.y = p.y;
-  render(); refresh();
-});
-const endDrag = () => { if (drag) { drag = null; render(); } };
-cv.addEventListener("pointerup", endDrag);
-cv.addEventListener("pointercancel", endDrag);
-
-/* ---------- lista ---------- */
-const NAMES = { ref: "Referência", len: "Medida", ang: "Inclinação" };
-function refresh() {
-  const ul = $("#lines"); ul.textContent = "";
-  if (!lines.length) {
-    const li = document.createElement("li"); li.className = "empty";
-    li.textContent = img ? "Escolha Referência e marque as duas pontas da porta, folha ou trena." : "Nenhuma medida ainda.";
-    ul.append(li);
-  }
-  const count = { ref: 0, len: 0, ang: 0 };
-  lines.forEach((l, i) => {
-    count[l.type]++;
-    const li = document.createElement("li");
-    li.innerHTML = `<span class="sw"></span><span></span><span class="lv"></span><button class="del" aria-label="Apagar">×</button>`;
-    li.children[0].style.background = `var(--${l.type === "ref" ? "trace" : l.type === "len" ? "amber" : "ok"})`;
-    li.children[1].textContent = NAMES[l.type] + (l.type === "ref" ? "" : " " + count[l.type]);
-    li.children[2].textContent = valueOf(l);
-    li.children[3].addEventListener("click", () => { lines.splice(i, 1); render(); refresh(); });
-    ul.append(li);
-  });
-  $("#useTilt").hidden = !lines.some(l => l.type === "ang");
-  render(); calc();
-}
-$("#btnClearLines").addEventListener("click", () => { lines = []; pending = null; render(); refresh(); });
-$("#useTilt").addEventListener("click", () => {
-  const a = [...lines].reverse().find(l => l.type === "ang");
-  if (a) { $("#cTilt").value = Math.round(tiltDeg(a)); calc(); }
-});
-
-/* ---------- contas rápidas ---------- */
-const val = id => parseFloat($(id).value);
-function calc() {
-  const h = val("#cH"), t = val("#cTilt"), ear = val("#cEar"), d2 = val("#cD2"), d1 = val("#cD1");
-  const drop = h - ear;
-  let aim;
-  if (!(drop > 0)) aim = "A caixa está na altura do ouvido ou abaixo. O som bate nas primeiras pessoas e não chega bem no fundo: suba a caixa.";
-  else if (!(t > 0)) aim = `Caixa reta (0°): o centro do som passa <b>${num(drop, 1)} m</b> acima do ouvido em toda a igreja e vai bater na parede do fundo.`;
-  else {
-    const d = drop / Math.tan(t * Math.PI / 180);
-    aim = `O centro do som chega na altura do ouvido a <b>≈ ${num(d, 1)} m</b> da caixa.`;
-    if (d2 > 0) {
-      const ideal = Math.atan(drop / (d2 * 0.7)) * 180 / Math.PI;
-      aim += ` Para cobrir bem até o fundo (${num(d2, 1)} m), mire em uns 70% da igreja: inclinação de <b>≈ ${Math.round(ideal)}°</b>.`;
-      if (d < d2 * 0.4) aim += " Do jeito que está, o som cai cedo demais e o fundo fica fraco.";
-      else if (d > d2) aim += " Do jeito que está, o som passa por cima do público e bate na parede do fundo (eco).";
-    }
-  }
-  $("#rAim").innerHTML = aim;
-
-  if (d1 > 0 && d2 > 0) {
-    const diff = 20 * Math.log10(d2 / d1);
-    let txt = `O fundo ouve <b>≈ ${Math.round(diff)} dB a menos</b> que a 1ª fila.`;
-    txt += diff <= 6 ? " Diferença boa." : diff <= 10 ? " Aceitável. Subir ou inclinar melhor a caixa ajuda a equilibrar." : " Diferença grande: a frente fica alta demais e o fundo não entende. Suba a caixa, mire mais para o fundo ou use caixa de reforço no meio da igreja.";
-    $("#rDb").innerHTML = txt;
-  } else $("#rDb").textContent = "";
-
-  const dd = val("#cDd");
-  if (dd > 0) {
-    const ms = dd / 343 * 1000;
-    $("#rDelay").innerHTML = `O som leva <b>≈ ${Math.round(ms)} ms</b> para andar ${num(dd, 1)} m. Ajuste o delay da caixa de reforço para <b>≈ ${Math.round(ms + 5)} a ${Math.round(ms + 10)} ms</b>, para o som parecer vir da frente. Precisa de processador ou caixa com delay; sem isso, deixe o reforço mais baixo.`;
-  } else $("#rDelay").textContent = "";
-}
-["#cH", "#cTilt", "#cEar", "#cD1", "#cD2", "#cDd"].forEach(id => $(id).addEventListener("input", calc));
-
-setMode("ref");
-refresh();
-showView(location.hash === "#medir" ? "medir" : "mic");
-})();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="comum.js"></script>
+<script src="medir.js"></script>
+<script src="caixas.js"></script>
 </body>
 </html>

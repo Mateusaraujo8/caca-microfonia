@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Marcador de Medição</title>
+<style>
+  @page { size: A4 portrait; margin: 12mm; }
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #fff; color: #111; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .screen { max-width: 720px; margin: 0 auto; padding: 16px max(16px, env(safe-area-inset-left, 0px)) 8px; display: flex; flex-direction: column; gap: 10px; }
+  .screen h1 { font-size: 22px; margin: 0; }
+  .screen ol { margin: 0; padding-left: 20px; }
+  .screen button { align-self: flex-start; font: 600 16px system-ui; padding: 12px 20px; border-radius: 8px; border: 0; background: #f2b544; color: #1b1404; cursor: pointer; }
+  .sheet { width: 186mm; margin: 0 auto; padding-top: 4mm; display: flex; flex-direction: column; align-items: center; gap: 6mm; }
+  .qrbox { padding: 20mm; background: #fff; }
+  .qr { width: 140mm; height: 140mm; display: block; }
+  .info { text-align: center; font-size: 13pt; }
+  .info b { font-size: 16pt; }
+  .ruler { width: 100mm; height: 12mm; position: relative; border-top: 0.4mm solid #000; }
+  .ruler i { position: absolute; top: 0; width: 0.3mm; background: #000; }
+  .ruler span { position: absolute; top: 6mm; font-size: 8pt; transform: translateX(-50%); }
+  .rulerLabel { font-size: 10pt; }
+  @media screen { .sheet { border: 1px dashed #bbb; margin: 12px auto 24px; max-width: calc(100% - 32px); overflow: hidden; } }
+  @media screen and (max-width: 760px) { .sheet { width: auto; } .qrbox { padding: 6vw; } .qr { width: 70vw; height: 70vw; } .ruler { width: 60vw; } }
+  @media print { .screen { display: none; } }
+</style>
+</head>
+<body>
+  <div class="screen">
+    <h1>Folha do marcador</h1>
+    <ol>
+      <li>Imprima em <b>A4, tamanho real (100%)</b>. Não use "ajustar à página".</li>
+      <li>Depois de impresso, meça o quadrado preto com uma régua: deve dar <b>14,0 cm</b>. Se der diferente, digite o tamanho real no app.</li>
+      <li>Cole a folha <b>reta</b> na parede ou na caixa que vai medir e tire a foto pelo app.</li>
+    </ol>
+    <button id="print">Imprimir</button>
+  </div>
+
+  <div class="sheet">
+    <div class="qrbox"><svg class="qr" id="qr" shape-rendering="crispEdges" aria-label="Marcador de medição"></svg></div>
+    <div class="info"><b>Marcador Caça-Microfonia · 14,0 cm</b><br>Medida do quadrado preto, de ponta a ponta. Cole reto, sem dobrar.</div>
+    <div class="ruler" id="ruler"></div>
+    <div class="rulerLabel">Régua de conferência: 10 cm</div>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+(() => {
+  const svg = document.getElementById("qr");
+  if (typeof qrcode !== "function") { svg.outerHTML = "<p>Não foi possível gerar o marcador (sem internet). Abra esta página de novo com internet.</p>"; return; }
+  const q = qrcode(1, "M"); q.addData("CM:140"); q.make();
+  const n = q.getModuleCount();
+  svg.setAttribute("viewBox", `0 0 ${n} ${n}`);
+  let d = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
+  svg.innerHTML = `<rect width="${n}" height="${n}" fill="#fff"/><path d="${d}" fill="#000"/>`;
+  const ruler = document.getElementById("ruler");
+  for (let cm = 0; cm <= 10; cm++) {
+    for (let mm = 0; mm < (cm === 10 ? 1 : 10); mm++) {
+      const i = document.createElement("i");
+      i.style.left = `calc(${(cm * 10 + mm)}% - 0.15mm)`;
+      i.style.height = mm === 0 ? "5mm" : mm === 5 ? "3.5mm" : "2mm";
+      ruler.append(i);
+    }
+    const s = document.createElement("span"); s.style.left = (cm * 10) + "%"; s.textContent = cm; ruler.append(s);
+  }
+  document.getElementById("print").addEventListener("click", () => window.print());
+})();
+</script>
+</body>
+</html>

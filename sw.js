@@ -1,5 +1,6 @@
-const CACHE = "caca-microfonia-v3";
-const FILES = ["./", "index.html", "manifest.json", "icon.svg"];
+const CACHE = "caca-microfonia-v4";
+const FILES = ["./", "index.html", "comum.js", "medir.js", "caixas.js", "marcador.html", "manifest.json", "icon.svg"];
+const CDN = ["cdn.jsdelivr.net", "cdnjs.cloudflare.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
@@ -11,7 +12,8 @@ self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
   e.respondWith(
     fetch(e.request).then(r => {
-      if (r.ok && new URL(e.request.url).origin === location.origin) {
+      const u = new URL(e.request.url);
+      if ((r.ok && u.origin === location.origin) || ((r.ok || r.type === "opaque") && CDN.includes(u.hostname))) {
         const copy = r.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
       }
