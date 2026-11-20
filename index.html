@@ -234,7 +234,9 @@ footer{color:var(--mute);font-size:12px;text-align:center}
           <div class="specHead">
             <span class="label">Foto</span>
             <div class="controls">
-              <label class="btn small primary" for="photoIn">Abrir foto</label>
+              <label class="btn small primary" for="cameraIn">Tirar foto</label>
+              <input type="file" id="cameraIn" accept="image/*" capture="environment" hidden>
+              <label class="btn small" for="photoIn">Galeria</label>
               <input type="file" id="photoIn" accept="image/*" hidden>
               <button class="btn small" id="btnExample">Usar exemplo</button>
             </div>
@@ -247,7 +249,7 @@ footer{color:var(--mute);font-size:12px;text-align:center}
           <p class="hint" id="hint"></p>
           <div class="photoBox">
             <canvas id="photo" hidden aria-label="Foto para medir"></canvas>
-            <div class="photoEmpty" id="photoEmpty">Abra uma foto das caixas, do palco ou da igreja. Para experimentar antes, toque em <b>Usar exemplo</b>.</div>
+            <div class="photoEmpty" id="photoEmpty">Toque em <b>Tirar foto</b> para fotografar as caixas, o palco ou a igreja, ou escolha uma foto da <b>Galeria</b>. Para experimentar antes, toque em <b>Usar exemplo</b>.</div>
           </div>
         </section>
       </div>
@@ -813,13 +815,15 @@ function setImage(src, preset) {
   };
   im.src = src;
 }
-$("#photoIn").addEventListener("change", e => {
+function onPhoto(e) {
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   setImage(URL.createObjectURL(f));
   setMode("ref");
   e.target.value = "";
-});
+}
+$("#photoIn").addEventListener("change", onPhoto);
+$("#cameraIn").addEventListener("change", onPhoto);
 $("#btnExample").addEventListener("click", () => {
   setImage(exampleImage(), () => [
     { type: "ref", a: { x: 266, y: 420 }, b: { x: 266, y: 840 } },
