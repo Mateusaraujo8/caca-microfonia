@@ -98,14 +98,18 @@ async function arSupported() {
   try { return !!(navigator.xr && await navigator.xr.isSessionSupported("immersive-ar")); } catch (e) { return false; }
 }
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const ua = navigator.userAgent;
+const isAndroid = /Android/i.test(ua);
+const otherBrowser = /MiuiBrowser|XiaoMi|SamsungBrowser|Firefox|OPR\/|EdgA|HeyTapBrowser|UCBrowser/i.test(ua);
 (async () => {
-  if (await arSupported()) $("#arMsg").textContent = "Este celular aceita medição AR.";
-  else {
-    $("#arMsg").textContent = isIOS
-      ? "O Safari do iPhone não tem AR para sites. Use o app Medida, que já vem no iPhone, e digite o resultado nas Contas rápidas."
-      : "Este aparelho ou navegador não tem AR. Funciona no Chrome de celulares Android com ARCore (Google Play Services para RA).";
-    $("#btnAR").disabled = true;
-  }
+  if (await arSupported()) { $("#arMsg").textContent = "Este celular aceita medição AR."; return; }
+  let msg;
+  if (isIOS) msg = "O Safari do iPhone não tem AR para sites. Use o app Medida, que já vem no iPhone, ou o contador de passos abaixo.";
+  else if (isAndroid && otherBrowser) msg = "Este navegador não tem AR. Abra o app no Google Chrome (no Xiaomi, o navegador que vem instalado não serve) e tente de novo. Se continuar sem AR, use o contador de passos abaixo.";
+  else if (isAndroid) msg = "Este celular não tem AR para sites. O Google só libera em aparelhos da lista do ARCore (por exemplo, o Redmi Note 13 comum não está, só o 13 Pro+). Use o contador de passos abaixo ou uma trena.";
+  else msg = "AR só funciona no celular (Chrome de Android com ARCore). Aqui, use o contador de passos no celular ou uma trena.";
+  $("#arMsg").textContent = msg;
+  $("#btnAR").disabled = true;
 })();
 
 async function startAR() {
@@ -206,6 +210,80 @@ $("#arExit").addEventListener("click", () => { if (xr) xr.session.end(); else en
 document.querySelectorAll("[data-ar-to]").forEach(b => b.addEventListener("click", () => {
   if (lastAR) setCalc(b.dataset.arTo, lastAR, b.textContent.replace("Usar como ", "").replace(/^./, c => c.toUpperCase()));
 }));
+
+/* ================= Contador de passos (acelerômetro) ================= */
+let pedOn = false, pedCal = false, steps = 0, fast = 9.8, slow = 9.8, armed = true, lastStep = 0, gotMotion = false;
+try { const v = parseFloat(localStorage.getItem("cm_stepLen")); if (v > 0.3 && v < 1.3) $("#pedLen").value = v.toFixed(2); } catch (e) {}
+const stepLen = () => { const v = parseFloat($("#pedLen").value); return v > 0 ? v : 0.75; };
+function pedShow() {
+  $("#pedVal").textContent = num(steps * stepLen(), 1) + " m";
+  $("#pedSteps").textContent = steps + (steps === 1 ? " passo" : " passos");
+}
+// Cada passo dá um pico na força total do acelerômetro. Filtro rápido menos filtro lento = só o balanço do passo.
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity;
+  if (!a || a.x == null) return;
+  gotMotion = true;
+  const m = Math.hypot(a.x, a.y, a.z);
+  fast = fast * 0.75 + m * 0.25;
+  slow = slow * 0.97 + m * 0.03;
+  const d = fast - slow, now = performance.now();
+  if (armed && d > 1.1 && now - lastStep > 280) {
+    steps++; lastStep = now; armed = false; pedShow();
+  } else if (!armed && d < 0) armed = true;
+}
+async function startPed(calibrate) {
+  $("#pedMsg").hidden = true;
+  let denied = false;
+  try {
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function")
+      denied = (await DeviceMotionEvent.requestPermission()) !== "granted";
+  } catch (err) { denied = true; }
+  steps = 0; armed = true; lastStep = 0; gotMotion = false; fast = slow = 9.8;
+  pedOn = true; pedCal = calibrate;
+  window.addEventListener("devicemotion", onMotion);
+  $("#btnPed").textContent = "Parar"; $("#btnPed").className = "btn stop";
+  $("#btnPedCal").disabled = true; $("#pedResult").hidden = true;
+  pedShow();
+  if (calibrate) toast("Ande os 10 m marcados e toque em Parar");
+  setTimeout(() => {
+    if (!pedOn || gotMotion) return;
+    const m = $("#pedMsg");
+    m.textContent = denied
+      ? "O sensor de movimento não foi liberado. No iPhone, feche e abra o app e toque em Permitir. No Android, libere \"Sensores de movimento\" nas configurações do site."
+      : "Este aparelho não mandou dados do acelerômetro. Use num celular.";
+    m.hidden = false; stopPed();
+  }, 2500);
+}
+function stopPed() {
+  window.removeEventListener("devicemotion", onMotion);
+  const wasCal = pedCal;
+  pedOn = false; pedCal = false;
+  $("#btnPed").textContent = "Começar"; $("#btnPed").className = "btn primary";
+  $("#btnPedCal").disabled = false;
+  if (wasCal) {
+    if (steps >= 6) {
+      const len = 10 / steps;
+      $("#pedLen").value = len.toFixed(2);
+      try { localStorage.setItem("cm_stepLen", len.toFixed(3)); } catch (e) {}
+      toast(`Passo calibrado: ${num(len, 2)} m (${steps} passos em 10 m)`);
+    } else toast("Poucos passos contados. Tente calibrar de novo, andando normal.");
+  } else if (steps > 0) $("#pedResult").hidden = false;
+  pedShow();
+}
+$("#btnPed").addEventListener("click", () => pedOn ? stopPed() : startPed(false));
+$("#btnPedCal").addEventListener("click", () => startPed(true));
+$("#pedPlus").addEventListener("click", () => { steps++; pedShow(); if (!pedOn && steps) $("#pedResult").hidden = false; });
+$("#pedMinus").addEventListener("click", () => { steps = Math.max(0, steps - 1); pedShow(); });
+$("#pedLen").addEventListener("input", () => {
+  pedShow();
+  const v = parseFloat($("#pedLen").value);
+  if (v > 0.3 && v < 1.3) try { localStorage.setItem("cm_stepLen", String(v)); } catch (e) {}
+});
+document.querySelectorAll("[data-ped-to]").forEach(b => b.addEventListener("click", () => {
+  if (steps) setCalc(b.dataset.pedTo, steps * stepLen(), b.textContent.replace("Usar como ", "").replace(/^./, c => c.toUpperCase()));
+}));
+pedShow();
 
 /* ================= Contas rápidas ================= */
 const val = id => parseFloat($(id).value);

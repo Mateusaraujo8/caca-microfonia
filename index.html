@@ -166,6 +166,12 @@ ol.tips.small{font-size:14px;margin-top:12px}
 .incDir{font-size:15px;color:var(--mute)}
 .chip.locked{border-color:var(--ok);color:var(--ok)}
 
+/* contador de passos */
+.pedRead{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:6px 0 12px}
+.pedRead .big{color:var(--amber);font-size:46px}
+.pedSteps{display:flex;align-items:center;gap:8px;font:600 15px var(--f-mono)}
+.refRow label{font-size:14px;color:var(--mute)}
+
 /* AR */
 .arResult{display:flex;flex-direction:column;gap:8px;margin-top:8px}
 .arResult .big{font-size:40px;color:var(--amber)}
@@ -371,6 +377,31 @@ ol.tips.small{font-size:14px;margin-top:12px}
               <button class="btn small" data-ar-to="cDd">Usar como distância do reforço</button>
             </div>
           </div>
+        </section>
+
+        <section class="panel">
+          <span class="label">Distância andando · contador de passos</span>
+          <p class="hint">Funciona em qualquer celular. Segure o celular na mão, fique em cima do ponto inicial (por exemplo, embaixo da caixa), toque em <b>Começar</b> e ande normal, em linha reta, até o fim. Toque em <b>Parar</b>.</p>
+          <div class="pedRead">
+            <div class="big" id="pedVal">0,0 m</div>
+            <div class="pedSteps">
+              <button class="btn small" id="pedMinus" aria-label="Tirar um passo">−1</button>
+              <span id="pedSteps">0 passos</span>
+              <button class="btn small" id="pedPlus" aria-label="Somar um passo">+1</button>
+            </div>
+          </div>
+          <div class="controls">
+            <button class="btn primary" id="btnPed">Começar</button>
+            <button class="btn" id="btnPedCal">Calibrar meu passo</button>
+          </div>
+          <div class="refRow"><label for="pedLen">Tamanho do passo</label><input type="number" id="pedLen" step="0.01" min="0.3" max="1.3" value="0.75"><span>m</span></div>
+          <div class="controls" id="pedResult" hidden>
+            <button class="btn small" data-ped-to="cD1">Usar como 1ª fila</button>
+            <button class="btn small" data-ped-to="cD2">Usar como último banco</button>
+            <button class="btn small" data-ped-to="cDd">Usar como distância do reforço</button>
+          </div>
+          <p class="note">Para ficar mais preciso, calibre uma vez: marque 10 m no chão com trena, toque em <b>Calibrar meu passo</b>, ande os 10 m e toque em <b>Parar</b>. Se o contador pular ou perder um passo, corrija com −1 / +1. Precisão de uns 5%.</p>
+          <p class="note err" id="pedMsg" hidden></p>
         </section>
       </div>
 
