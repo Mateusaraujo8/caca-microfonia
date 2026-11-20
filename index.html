@@ -110,7 +110,9 @@ ol.tips b{color:var(--amber)}
 footer{color:var(--mute);font-size:12px;text-align:center}
 
 /* abas */
-.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+@media (max-width:420px){.tab{padding:10px 9px;font-size:15px}}
 .tab{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;font:600 16px/1 var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--mute);cursor:pointer;white-space:nowrap;min-height:44px}
 .tab[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--amber)}
 .tab:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
@@ -166,6 +168,23 @@ ol.tips.small{font-size:14px;margin-top:12px}
 .incDir{font-size:15px;color:var(--mute)}
 .chip.locked{border-color:var(--ok);color:var(--ok)}
 
+/* planta */
+.plBox{background:#0a0d0e;border-radius:6px;overflow:hidden}
+.plBox svg{display:block;width:100%;height:auto}
+.plLegend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--mute);margin-top:10px}
+.plLegend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:5px}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
+.fld{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--mute);justify-content:flex-end}
+.fld input,.fld select{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:8px;min-height:40px;color:var(--fg);width:100%}
+.recs{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.recs li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;background:var(--panel-2);border-radius:8px;padding:10px 12px;font-size:14.5px}
+.recs li b{color:var(--amber)}
+.recs .tag{font:600 11px/1 var(--f-display);letter-spacing:.1em;text-transform:uppercase;padding:5px 7px;border-radius:4px;margin-top:2px}
+.recs .ok .tag{background:var(--ok);color:#06140d}
+.recs .warn .tag{background:var(--amber);color:#1b1404}
+.recs .bad .tag{background:var(--hot);color:#1f0705}
+#plReset{align-self:flex-start}
+
 /* contador de passos */
 .pedRead{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:6px 0 12px}
 .pedRead .big{color:var(--amber);font-size:46px}
@@ -200,8 +219,9 @@ ol.tips.small{font-size:14px;margin-top:12px}
 
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" id="tabMic" aria-selected="true" aria-controls="viewMic">Microfonia</button>
-    <button class="tab" role="tab" id="tabMed" aria-selected="false" aria-controls="viewMed">Medir pela foto</button>
+    <button class="tab" role="tab" id="tabMed" aria-selected="false" aria-controls="viewMed">Foto</button>
     <button class="tab" role="tab" id="tabCx" aria-selected="false" aria-controls="viewCx">Caixas</button>
+    <button class="tab" role="tab" id="tabPl" aria-selected="false" aria-controls="viewPl">Planta</button>
   </nav>
 
   <div class="view" id="viewMic" role="tabpanel" aria-labelledby="tabMic">
@@ -434,6 +454,51 @@ ol.tips.small{font-size:14px;margin-top:12px}
           </div>
           <p class="note">Os números podem vir direto do inclinômetro, da medição AR ou das medidas da foto (botão <b>Usar</b> em cada medida).</p>
         </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="viewPl" role="tabpanel" aria-labelledby="tabPl" hidden>
+    <p class="status warn" id="plExample">Estes são <b>valores de exemplo</b>. Troque pelas medidas da sua igreja (contador de passos, lajotas ou fotos com o marcador) e o desenho se ajusta na hora.</p>
+    <div class="grid">
+      <div class="col">
+        <section class="panel">
+          <div class="seg" role="group" aria-label="Qual desenho mostrar">
+            <button class="segb on" data-pv="side">De lado</button>
+            <button class="segb" data-pv="top">De cima · voz</button>
+            <button class="segb" data-pv="sub">De cima · grave</button>
+          </div>
+          <div class="plBox" id="plSvgBox"></div>
+          <div class="plLegend" id="plLegend"></div>
+          <div class="refRow" id="plFreqRow" hidden>
+            <label for="pSubF">Frequência do grave</label>
+            <input type="range" id="pSubF" min="40" max="120" step="1" value="63">
+            <output id="oSubF">63 Hz</output>
+          </div>
+        </section>
+        <section class="panel">
+          <span class="label">O que mudar</span>
+          <ul class="recs" id="plRecs"></ul>
+          <p class="note">Modelo simplificado: considera distância, para onde a caixa aponta e o que a galeria tapa, mas não as reflexões da sala. Use para comparar posições antes de carregar caixa, e confirme medindo com o analisador.</p>
+        </section>
+      </div>
+      <div class="col">
+        <section class="panel"><span class="label">Igreja</span><div class="fields" id="plF_igreja"></div></section>
+        <section class="panel">
+          <span class="label">Galeria</span>
+          <label class="check" for="pGal"><input type="checkbox" id="pGal" checked> A igreja tem galeria no fundo</label>
+          <div class="fields" id="plF_galeria"></div>
+        </section>
+        <section class="panel"><span class="label">Caixas principais (uma de cada lado)</span><div class="fields" id="plF_caixas"></div></section>
+        <section class="panel">
+          <span class="label">Subwoofers</span>
+          <div class="fields">
+            <label class="fld" for="pSub"><span>Posição dos subs</span>
+              <select id="pSub"><option value="lados">Um de cada lado do palco</option><option value="centro">Juntos no centro</option></select>
+            </label>
+          </div>
+        </section>
+        <button class="btn small" id="plReset">Voltar aos valores de exemplo</button>
       </div>
     </div>
   </div>
@@ -879,5 +944,6 @@ if ("serviceWorker" in navigator && location.protocol === "https:") navigator.se
 <script src="comum.js"></script>
 <script src="medir.js"></script>
 <script src="caixas.js"></script>
+<script src="planta.js"></script>
 </body>
 </html>

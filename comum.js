@@ -6,7 +6,7 @@ window.CM = (() => {
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
   /* abas: #medir e #caixas na URL, sem nada = Microfonia */
-  const VIEWS = { mic: ["#viewMic", "#tabMic", ""], medir: ["#viewMed", "#tabMed", "medir"], caixas: ["#viewCx", "#tabCx", "caixas"] };
+  const VIEWS = { mic: ["#viewMic", "#tabMic", ""], medir: ["#viewMed", "#tabMed", "medir"], caixas: ["#viewCx", "#tabCx", "caixas"], planta: ["#viewPl", "#tabPl", "planta"] };
   function show(name) {
     if (!VIEWS[name]) name = "mic";
     for (const [k, [view, tab]] of Object.entries(VIEWS)) {
@@ -16,7 +16,7 @@ window.CM = (() => {
     // as telas com canvas recalculam o tamanho quando aparecem
     window.dispatchEvent(new Event("resize"));
   }
-  const fromHash = () => (location.hash.slice(1) === "medir" ? "medir" : location.hash.slice(1) === "caixas" ? "caixas" : "mic");
+  const fromHash = () => { const h = location.hash.slice(1); return VIEWS[h] && h !== "mic" ? h : "mic"; };
   for (const [k, [, tab, hash]] of Object.entries(VIEWS)) {
     $(tab).addEventListener("click", () => {
       if (hash) location.hash = hash; else history.replaceState(null, "", location.pathname + location.search);

@@ -20,11 +20,11 @@ const HINTS = {
 /* ---------- modo ---------- */
 function setMode(m) {
   mode = m; pending = null;
-  document.querySelectorAll(".segb").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  document.querySelectorAll("#viewMed .segb").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
   $("#hint").textContent = HINTS[m];
   render();
 }
-document.querySelectorAll(".segb").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
+document.querySelectorAll("#viewMed .segb").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
 
 /* ---------- referência ---------- */
 $("#refPreset").addEventListener("change", e => {
