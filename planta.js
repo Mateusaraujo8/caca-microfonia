@@ -214,33 +214,65 @@ function scorePlan(v) {
     return { score, inBand, diff, galIn };
   } finally { state.v = keep; }
 }
-function optimize() {
-  const v = state.v, Pn = geo();
+/* Busca por "descida de coordenadas": ajusta um parâmetro por vez (varre os valores dele e fica com o melhor),
+   repete até não melhorar, a partir de alguns pontos de partida diferentes. Cerca de 10x menos contas que testar todas
+   as combinações, devolve a tela entre as contas (barra de progresso) e para sozinha se passar do tempo. */
+const tick = () => new Promise(r => setTimeout(r, 0));
+async function optimize(onProgress) {
+  const Pn = geo(), t0 = performance.now(), BUDGET = 7000;
   const sxMin = Math.max(-Pn.Ps, 1.5 - Pn.Mic);
-  let best = null;
   const range = (a, b, st) => { const r = []; for (let x = a; x <= b + 1e-9; x += st) r.push(+x.toFixed(2)); return r; };
-  const shs = range(2.4, Math.min(Pn.Hc - 0.5, 5.5), 0.5);
-  for (const Sx of [sxMin, sxMin + 0.5, sxMin + 1])
-    for (const Sh of shs) for (const St of range(0, 28, 4)) for (const Toe of range(0, 30, 6))
-      for (const Sw of range(1, Math.max(1, Math.min(Pn.W / 2 - 0.5, 4.5)), 0.75)) {
-        const cand = { Sx, Sh, St, Toe, Sw };
-        const r = scorePlan(cand);
-        if (!best || r.score > best.r.score) best = { cand, r };
+  const dom = {
+    Sh: range(2.4, Math.max(2.4, Math.min(Pn.Hc - 0.5, 5.5)), 0.4),
+    St: range(0, 28, 2),
+    Toe: range(0, 30, 3),
+    Sw: range(1, Math.max(1, Math.min(Pn.W / 2 - 0.5, 4.5)), 0.5),
+    Sx: [sxMin, sxMin + 0.5, sxMin + 1]
+  };
+  const clamp = (k, v) => dom[k].reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a);
+  const mid = k => dom[k][Math.floor(dom[k].length / 2)];
+  const cur0 = Object.fromEntries(Object.keys(dom).map(k => [k, clamp(k, state.v[k])]));
+  const starts = [cur0, { Sh: mid("Sh"), St: 6, Toe: 9, Sw: clamp("Sw", 1.5), Sx: sxMin }, { Sh: dom.Sh[dom.Sh.length - 1], St: 14, Toe: 18, Sw: clamp("Sw", 3), Sx: sxMin + 0.5 }, { Sh: dom.Sh[1] || dom.Sh[0], St: 2, Toe: 3, Sw: clamp("Sw", 2.5), Sx: sxMin }];
+  const perRound = Object.values(dom).reduce((a, d) => a + d.length, 0), total = starts.length * 3 * perRound;
+  let evals = 0, best = null, last = performance.now();
+  const ev = async c => {
+    const r = scorePlan(c); evals++;
+    const now = performance.now();
+    if (now - last > 40) { last = now; onProgress && onProgress(Math.min(0.99, evals / total)); await tick(); }
+    return r;
+  };
+  for (const st of starts) {
+    let cur = { ...st }, cs = (await ev(cur));
+    for (let round = 0; round < 3; round++) {
+      let improved = false;
+      for (const k of Object.keys(dom)) for (const val of dom[k]) {
+        if (val === cur[k]) continue;
+        const cand = { ...cur, [k]: val }, r = await ev(cand);
+        if (r.score > cs.score + 1e-9) { cur = cand; cs = r; improved = true; }
       }
-  return { best, before: scorePlan({}), v0: { ...v } };
+      if (!improved || performance.now() - t0 > BUDGET) break;
+    }
+    if (!best || cs.score > best.r.score) best = { cand: cur, r: cs };
+    if (performance.now() - t0 > BUDGET) break;
+  }
+  return { best, before: scorePlan({}), evals, ms: Math.round(performance.now() - t0) };
 }
-$("#plOpt").addEventListener("click", () => {
+let optBusy = false;
+$("#plOpt").addEventListener("click", async () => {
+  if (optBusy) return;
+  optBusy = true; $("#plOpt").disabled = true;
   const msg = $("#plOptMsg");
-  msg.hidden = false; msg.className = "status"; msg.textContent = "Calculando a melhor posição…";
-  setTimeout(() => {
-    const { best, before } = optimize();
+  msg.hidden = false; msg.className = "status"; msg.textContent = "Calculando a melhor posição… 0%";
+  await tick();
+  try {
+    const { best, before } = await optimize(p => { msg.textContent = `Calculando a melhor posição… ${Math.round(p * 100)}%`; });
     Object.assign(state.v, best.cand);
     state.edited = true; state.fills = true;
     fillForm(); save(); draw();
     const c = best.cand, pct = x => Math.round(x * 100) + "%";
     msg.className = "status ok";
     msg.innerHTML = `Posição sugerida aplicada: caixa a <b>${num(c.Sh, 1)} m</b> de altura, inclinada <b>${c.St}°</b>, virada <b>${c.Toe}°</b> para o centro, a <b>${num(c.Sw, 2)} m</b> da parede e <b>${num(c.Sx, 1)} m</b> à frente do palco. Lugares com volume parecido: de <b>${pct(before.inBand)}</b> para <b>${pct(best.r.inBand)}</b>. Os campos abaixo já foram atualizados; mexa neles para testar outra ideia.`;
-  }, 30);
+  } finally { optBusy = false; $("#plOpt").disabled = false; }
 });
 const subs = P => state.sub === "centro"
   ? [{ x: 0.5, y: P.W / 2 - 0.35 }, { x: 0.5, y: P.W / 2 + 0.35 }]
