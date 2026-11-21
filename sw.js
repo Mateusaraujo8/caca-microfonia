@@ -1,4 +1,4 @@
-const CACHE = "caca-microfonia-v18";
+const CACHE = "caca-microfonia-v19";
 const FILES = ["./", "index.html", "comum.js", "medir.js", "caixas.js", "planta.js", "planta-foto.js", "scan.js", "medicao.js", "marcador.html", "manifest.json", "icon.svg"];
 const CDN = ["cdn.jsdelivr.net", "cdnjs.cloudflare.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 
