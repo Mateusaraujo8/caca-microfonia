@@ -60,6 +60,14 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 .meta{display:flex;gap:8px;flex-wrap:wrap}
 .chip{font:500 13px/1 var(--f-mono);border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:var(--panel-2)}
 .chip b{color:var(--amber);font-weight:600}
+#ringList{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+#ringList li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center;background:var(--panel-2);border-radius:8px;padding:10px 12px;border-left:4px solid var(--amber)}
+#ringList li.done{border-left-color:var(--ok);opacity:.8}
+#ringList li.back{border-left-color:var(--hot)}
+#ringList li.empty{display:block;color:var(--mute);border-left-color:var(--line)}
+#ringList .rf{font:600 15px/1.3 var(--f-mono)}
+#ringList .rs{grid-column:1;font-size:13px;color:var(--mute)}
+#ringList .rb{display:flex;gap:6px;grid-row:1/3;grid-column:2}
 .bandPick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:6px 0 2px}
 .bandPick div{border:1px solid var(--line);border-radius:8px;padding:8px 6px;text-align:center;background:var(--panel-2);opacity:.45}
 .bandPick b{display:block;font:700 18px/1.1 var(--f-display);letter-spacing:.06em}
@@ -278,6 +286,14 @@ ol.tips.small{font-size:14px;margin-top:12px}
           <div class="legend"><span><i style="background:var(--trace)"></i>Som agora</span><span><i style="background:var(--mute)"></i>Pico</span><span><i style="background:var(--hot)"></i>Microfonia</span></div>
         </div>
         <canvas id="spec" aria-label="Gráfico de frequências captadas pelo microfone"></canvas>
+      </section>
+
+      <section class="panel" id="ringPanel">
+        <div class="histHead"><span class="label">Ensaio: tirar microfonia antes do culto</span><button class="btn small primary" id="ringToggle">Começar ensaio</button></div>
+        <p class="hint" id="ringHint" style="margin-top:8px"></p>
+        <div class="plBox"><svg id="ringEq" viewBox="0 0 320 118" role="img" aria-label="Equalizador gráfico com os cortes sugeridos"></svg></div>
+        <ul id="ringList"></ul>
+        <div class="controls" style="margin-top:10px"><button class="btn small" id="ringCopy">Copiar lista</button><button class="btn small" id="ringClear">Limpar lista</button></div>
       </section>
     </div>
 
@@ -523,6 +539,11 @@ ol.tips.small{font-size:14px;margin-top:12px}
             <label class="check" for="plFill"><input type="checkbox" id="plFill"> Ver com as caixas de reforço sugeridas</label>
           </div>
           <p class="status" id="plOptMsg" hidden></p>
+          <div class="controls" id="mdBar" style="margin-top:10px" hidden>
+            <button class="btn primary" id="mdGo">Medir aqui (3 s)</button>
+            <button class="btn small primary" id="mdNoise">Tocar ruído rosa</button>
+          </div>
+          <p class="status" id="mdMsg" hidden style="margin-top:10px"></p>
           <div class="refRow" id="plFreqRow" hidden>
             <label for="pSubF">Frequência do grave</label>
             <input type="range" id="pSubF" min="40" max="120" step="1" value="63">
@@ -555,6 +576,19 @@ ol.tips.small{font-size:14px;margin-top:12px}
             <div class="refRow"><select id="scKnown" aria-label="Medida conhecida"></select><input type="number" id="scReal" step="0.01" min="0.1" placeholder="m"><button class="btn small" id="scFix">Ajustar</button></div>
           </div>
           <button class="btn primary" id="scApply" hidden style="margin-top:10px">Aplicar na planta</button>
+        </section>
+        <section class="panel" id="mdPanel">
+          <span class="label">Medir o som real da igreja</span>
+          <p class="hint" style="margin-top:8px">O desenho da planta é uma estimativa. Aqui você mede o som de verdade e o app mostra onde ele realmente falta. Faça com a igreja <b>vazia e em silêncio</b>.</p>
+          <ol class="tips">
+            <li>Ligue a saída de fone do celular numa entrada da mesa e toque em <b>Tocar ruído rosa</b> (botão embaixo da planta). O som toca pelas caixas, num volume normal de culto.</li>
+            <li>Vá para um lugar da igreja e <b>toque na planta</b> (aba "De cima · voz") no ponto onde você está.</li>
+            <li>Toque em <b>Medir aqui</b> (embaixo da planta) e fique parado por 3 segundos. Faça uns 6 a 10 pontos: frente, meio, fundo, laterais e embaixo da galeria.</li>
+          </ol>
+          <p class="status warn"><b>Cuidado com o volume:</b> comece com o volume da mesa baixo e suba devagar. O ruído toca sem parar e desliga sozinho em 10 minutos.</p>
+          <div class="controls"><button class="btn small" id="mdClear">Limpar medidas</button></div>
+          <label class="check" for="mdShow"><input type="checkbox" id="mdShow" disabled> Ver o mapa medido na planta (com 3 pontos ou mais)</label>
+          <ul class="recs" id="mdList"></ul>
         </section>
         <section class="panel" id="pfPanel">
           <span class="label">Alternativa: planta por foto · menos preciso</span>
@@ -727,11 +761,87 @@ function renderHist() {
 $("#btnClear").addEventListener("click", () => { hist = []; saveHist(); renderHist(); });
 renderHist();
 
+/* ---------- ensaio de microfonia ---------- */
+let ring = [], ringOn = false;
+try { ring = JSON.parse(localStorage.getItem("cm_ring") || "[]"); } catch (e) {}
+const saveRing = () => { try { localStorage.setItem("cm_ring", JSON.stringify(ring)); } catch (e) {} };
+function ringAdd(f) {
+  const band = nearestBand(f);
+  let it = ring.find(x => x.band === band);
+  if (!it) { it = { band, f, n: 1, cut: 3, done: false, back: false, t: Date.now() }; ring.push(it); }
+  else {
+    it.n++; it.f = f; it.t = Date.now();
+    if (it.done) { it.cut = Math.min(9, it.cut + 3); it.done = false; it.back = true; }   // voltou depois do corte: corta mais
+  }
+  ring.sort((a, b) => a.band - b.band);
+  saveRing(); renderRing();
+  try { navigator.vibrate && navigator.vibrate([60, 60, 60]); } catch (e) {}
+}
+function ringEq() {
+  const x = i => 10 + i * 10, y0 = 22, k = 4.5;
+  let s = `<line x1="4" y1="${y0}" x2="316" y2="${y0}" stroke="#4d5a58" stroke-width="1"/>`;
+  ISO.forEach((b, i) => {
+    s += `<line x1="${x(i)}" y1="10" x2="${x(i)}" y2="${y0 + 9 * k}" stroke="#2a3238" stroke-width="1"/>`;
+    if ([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000].includes(b)) s += `<text x="${x(i)}" y="114" text-anchor="middle" font-size="8" fill="#8b9a98">${fmtBand(b)}</text>`;
+  });
+  s += `<text x="4" y="8" font-size="8" fill="#8b9a98">0 dB</text>`;
+  for (const it of ring) {
+    const i = ISO.indexOf(it.band); if (i < 0) continue;
+    const col = it.back ? "#ff5b4f" : it.done ? "#5fd39a" : "#f2b544";
+    s += `<rect x="${x(i) - 3.5}" y="${y0}" width="7" height="${it.cut * k}" rx="1.5" fill="${col}"/>`;
+    s += `<text x="${x(i)}" y="${y0 + it.cut * k + 10}" text-anchor="middle" font-size="9" font-weight="700" fill="${col}">−${it.cut}</text>`;
+  }
+  $("#ringEq").innerHTML = s;
+}
+function renderRing() {
+  const tg = $("#ringToggle");
+  tg.textContent = ringOn ? "Parar ensaio" : "Começar ensaio";
+  tg.className = "btn small " + (ringOn ? "stop" : "primary");
+  $("#ringHint").innerHTML = ringOn
+    ? "<b>Ensaio ligado.</b> Com os microfones abertos onde ficam no culto, <b>suba o volume geral devagar</b> até apitar. Cada apito entra na lista com o corte sugerido. Corte no EQ gráfico, toque em <b>Já cortei</b> e suba de novo, até umas 3 ou 4 frequências."
+    : "Abra os microfones no lugar do culto e toque em <b>Começar ensaio</b>. O app anota cada frequência que apitar e diz quanto cortar. A lista fica salva neste aparelho para você repetir no próximo culto.";
+  const ul = $("#ringList"); ul.textContent = "";
+  if (!ring.length) {
+    const li = document.createElement("li"); li.className = "empty"; li.textContent = "Nenhum corte ainda.";
+    ul.append(li);
+  }
+  for (const it of ring) {
+    const li = document.createElement("li");
+    li.className = it.back ? "back" : it.done ? "done" : "";
+    const z = zoneOf(it.f);
+    li.innerHTML = `<span class="rf"></span><span class="rb"></span><span class="rs"></span>`;
+    li.children[0].textContent = `EQ gráfico ${fmtBand(it.band)}: −${it.cut} dB`;
+    li.children[2].textContent = `${fmtHz(it.f)} · ${z.name} · apitou ${it.n}×` + (it.back ? " · voltou: corte mais 3 dB" : it.done ? " · já cortado" : "");
+    const ok = document.createElement("button"); ok.className = "btn small"; ok.textContent = it.done ? "Desfazer" : "Já cortei";
+    ok.onclick = () => { it.done = !it.done; if (it.done) it.back = false; saveRing(); renderRing(); };
+    const del = document.createElement("button"); del.className = "btn small"; del.textContent = "×"; del.setAttribute("aria-label", "Apagar");
+    del.onclick = () => { ring = ring.filter(x => x !== it); saveRing(); renderRing(); };
+    li.children[1].append(ok, del);
+    ul.append(li);
+  }
+  ringEq();
+}
+$("#ringToggle").addEventListener("click", async () => {
+  if (ringOn) ringOn = false;
+  else { if (!running) await start(false); if (running) ringOn = true; }
+  renderRing();
+});
+$("#ringClear").addEventListener("click", () => { ring = []; saveRing(); renderRing(); });
+$("#ringCopy").addEventListener("click", () => {
+  const d = new Date().toLocaleDateString("pt-BR");
+  const txt = `Ensaio de microfonia (${d})\n` + (ring.length ? ring.map(it => `EQ gráfico ${fmtBand(it.band)}: -${it.cut} dB (${fmtHz(it.f)}, ${zoneOf(it.f).name})`).join("\n") : "Nenhum corte") + "\nDepois baixe o volume geral uns 3 dB para ter margem.";
+  const done = () => { const t = $("#toast"); t.textContent = "Lista copiada"; t.hidden = false; setTimeout(() => { t.hidden = true; }, 2000); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, () => alert(txt));
+  else alert(txt);
+});
+renderRing();
+
 /* ---------- áudio ---------- */
 let ctx = null, analyser = null, stream = null, demo = null, running = false, wakeLock = null;
 let spec, peak, timeBuf, prefix, aw, binHz, nBins;
 let tracks = [];
 let splMax = -Infinity, leqBuf = [], lastLeqPush = 0;
+let measBuf = null;
 
 async function start(useDemo) {
   stop();
@@ -772,7 +882,7 @@ async function start(useDemo) {
 }
 
 function stop() {
-  running = false;
+  running = false; ringOn = false; if (typeof renderRing === "function") renderRing();
   if (demo) { demo.stop(); demo = null; }
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   if (ctx) { ctx.close().catch(() => {}); ctx = null; }
@@ -876,7 +986,7 @@ function detect(dt) {
   for (const t of tracks) {
     if (!t.hit) t.miss += dt;
     if (!t.flagged && t.age >= cfg.hold && t.prom >= cfg.prom) {
-      t.flagged = true; addHist(t.f);
+      t.flagged = true; addHist(t.f); if (ringOn) ringAdd(t.f);
       try { navigator.vibrate && navigator.vibrate(120); } catch (e) {}
     }
   }
@@ -1069,10 +1179,24 @@ function loop(now) {
   }
   detect(dt);
   const L = levels(now);
+  if (measBuf) measBuf.push(L);
   draw();
   if (now - lastUi > 120) { lastUi = now; updateAlert(); updateMeter(L, now); }
   requestAnimationFrame(loop);
 }
+
+/* usado pela aba Planta: mede o nível médio (Leq) durante alguns segundos */
+window.__mic = {
+  running: () => running,
+  ensure: async () => { if (!running) await start(false); return running; },
+  measure: ms => new Promise(res => {
+    measBuf = [];
+    setTimeout(() => {
+      const b = measBuf || []; measBuf = null;
+      res(b.length ? 10 * Math.log10(b.reduce((a, L) => a + Math.pow(10, L / 10), 0) / b.length) : NaN);
+    }, ms);
+  })
+};
 
 layoutCanvas();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (!running) drawIdle(); });
@@ -1088,5 +1212,6 @@ if ("serviceWorker" in navigator && location.protocol === "https:") navigator.se
 <script src="planta.js"></script>
 <script src="planta-foto.js"></script>
 <script src="scan.js"></script>
+<script src="medicao.js"></script>
 </body>
 </html>
