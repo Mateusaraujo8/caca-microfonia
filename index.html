@@ -567,7 +567,8 @@ ol.tips.small{font-size:14px;margin-top:12px}
           </ol>
           <div class="refRow"><label for="scH">Qual a sua altura?</label><input type="number" id="scH" step="1" min="120" max="220" value="170"><span>cm (o app usa isso para calcular as distâncias)</span></div>
           <label class="check" for="scGal"><input type="checkbox" id="scGal" checked> A igreja tem galeria</label>
-          <label class="check" for="scGalSide" id="scGalSideRow"><input type="checkbox" id="scGalSide"> A galeria também continua pelas laterais</label>
+          <div class="refRow" id="scGalSideRow"><label for="scGalSide">A galeria também passa pelas laterais?</label>
+            <select id="scGalSide"><option value="none">Não, só no fundo</option><option value="both">Sim, nos dois lados</option><option value="left">Sim, só no lado esquerdo</option><option value="right">Sim, só no lado direito</option></select></div>
           <div class="controls" style="margin-top:10px"><button class="btn primary" id="scStart">Começar o scan</button></div>
           <p class="status" id="scMsg" hidden style="margin-top:10px"></p>
           <ul class="recs" id="scRes"></ul>
@@ -624,6 +625,8 @@ ol.tips.small{font-size:14px;margin-top:12px}
           <span class="label">Galeria</span>
           <label class="check" for="pGal"><input type="checkbox" id="pGal" checked> A igreja tem galeria no fundo</label>
           <div class="fields" id="plF_galeria"></div>
+          <div class="fields"><label class="fld" for="pGs"><span>Galeria nas laterais: em qual lado</span>
+            <select id="pGs"><option value="0">Nos dois lados</option><option value="1">Só no lado esquerdo (de quem olha para o palco)</option><option value="2">Só no lado direito (de quem olha para o palco)</option></select></label></div>
         </section>
         <section class="panel"><span class="label">Caixas principais (uma de cada lado)</span><div class="fields" id="plF_caixas"></div></section>
         <section class="panel">

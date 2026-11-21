@@ -27,7 +27,7 @@ const FIELDS = [
   ["caixas", "CovH", "Cobertura horizontal da caixa (°)", 90, 5],
   ["caixas", "CovV", "Cobertura vertical da caixa (°)", 50, 5]
 ];
-const DEF = Object.fromEntries(FIELDS.map(f => [f[1], f[3]]));
+const DEF = { ...Object.fromEntries(FIELDS.map(f => [f[1], f[3]])), Gs: 0 };   // Gs: 0 = galeria lateral nos dois lados, 1 = só esquerdo, 2 = só direito (de quem olha para o palco)
 
 /* ---------- campos ---------- */
 for (const [grp, id, label, , step] of FIELDS) {
@@ -44,14 +44,14 @@ const save = () => { try { localStorage.setItem("cm_planta", JSON.stringify(stat
 
 function fillForm() {
   for (const [, id] of FIELDS) $("#p_" + id).value = state.v[id];
-  $("#pGal").checked = state.gal; $("#pSub").value = state.sub; $("#plFill").checked = !!state.fills;
+  $("#pGal").checked = state.gal; $("#pSub").value = state.sub; $("#pGs").value = String(state.v.Gs | 0); $("#plFill").checked = !!state.fills;
   $("#pSubF").value = state.f; $("#oSubF").textContent = state.f + " Hz";
   $("#plExample").hidden = state.edited;
   document.querySelectorAll("#viewPl .segb").forEach(b => b.classList.toggle("on", b.dataset.pv === state.view));
 }
 function readForm() {
   for (const [, id] of FIELDS) { const v = parseFloat($("#p_" + id).value); if (isFinite(v)) state.v[id] = v; }
-  state.gal = $("#pGal").checked; state.sub = $("#pSub").value;
+  state.gal = $("#pGal").checked; state.sub = $("#pSub").value; state.v.Gs = +$("#pGs").value;
 }
 $("#viewPl").addEventListener("input", e => {
   if (e.target.id === "pSubF") { state.f = +e.target.value; $("#oSubF").textContent = state.f + " Hz"; }
@@ -89,6 +89,7 @@ function geo() {
   P.Gl = P.gal ? Math.max(0, Math.min(P.W / 2 - 1, v.Gl)) : 0;          // galeria lateral: profundidade
   P.Lg = Math.max(1, Math.min(P.L - P.D1 - 1, v.Lg));                    // e comprimento a partir do fundo
   P.xs = P.L - P.Lg;                                                     // onde ela começa, vista do palco
+  P.Gs = v.Gs | 0;
   return P;
 }
 // perda fora do eixo: -6 dB na borda da cobertura, cai mais rápido depois
@@ -115,9 +116,12 @@ const speakers = P => [
 ];
 // nível relativo visto de cima (soma das duas caixas, ouvido sentado no piso)
 // quem senta embaixo da galeria lateral: o raio da caixa até o ouvido bate no piso da galeria?
+// de quem olha para o palco, o lado esquerdo é a parte de baixo do desenho (y grande)
+const latSides = P => [...(P.Gs !== 1 ? [[0, P.Gl]] : []), ...(P.Gs !== 2 ? [[P.W - P.Gl, P.W]] : [])];
+const underLat = (P, x, y) => P.Gl > 0 && x > P.xs && ((y < P.Gl && P.Gs !== 1) || (y > P.W - P.Gl && P.Gs !== 2));
 function sideBlocked(P, s, x, y) {
   if (P.Gl <= 0 || x <= P.xs) return false;
-  const plane = y < P.Gl ? P.Gl : y > P.W - P.Gl ? P.W - P.Gl : null;
+  const plane = y < P.Gl && P.Gs !== 1 ? P.Gl : y > P.W - P.Gl && P.Gs !== 2 ? P.W - P.Gl : null;
   if (plane === null || Math.abs(y - s.y) < 1e-6) return false;
   const t = (plane - s.y) / (y - s.y);
   if (t <= 0 || t >= 1) return false;
@@ -169,7 +173,7 @@ function weakZones(P) {
     const z = { area: cs.length * STEP * STEP, x0: Math.min(...xs), x1: Math.max(...xs) + STEP, y0: Math.min(...ys), y1: Math.max(...ys) + STEP, fills: [] };
     const n = Math.max(1, Math.round((z.y1 - z.y0) / 4)), span = (z.y1 - z.y0) / n;
     const nfx = Math.max(1, Math.round((z.x1 - z.x0) / 6)), sx = (z.x1 - z.x0) / nfx;
-    const underG = P.gal && (z.x0 >= P.xm - 0.6 || (P.Gl > 0 && z.x0 >= P.xs - 0.6 && (z.y1 <= P.Gl + 0.5 || z.y0 >= P.W - P.Gl - 0.5)));
+    const underG = P.gal && (z.x0 >= P.xm - 0.6 || (P.Gl > 0 && z.x0 >= P.xs - 0.6 && ((P.Gs !== 1 && z.y1 <= P.Gl + 0.5) || (P.Gs !== 2 && z.y0 >= P.W - P.Gl - 0.5))));
     const h = underG ? P.Hg - 0.5 : 2.5;
     for (let j = 0; j < nfx; j++) for (let k = 0; k < n; k++) {
       const f = { x: z.x0 + 0.4 + j * sx, y: z.y0 + span * (k + 0.5), h };
@@ -191,7 +195,7 @@ function scorePlan(v) {
   try {
     const P = geo(), xEnd = P.gal ? P.xm : P.L;
     const lv = [];
-    for (let x = P.D1 + 0.4; x < xEnd; x += 0.7) for (let y = 0.4; y < P.W; y += 0.7) { if (P.Gl > 0 && x > P.xs && (y < P.Gl || y > P.W - P.Gl)) continue; lv.push(topLevel(P, x, y)); }
+    for (let x = P.D1 + 0.4; x < xEnd; x += 0.7) for (let y = 0.4; y < P.W; y += 0.7) { if (underLat(P, x, y)) continue; lv.push(topLevel(P, x, y)); }
     const M = median(lv);
     const inBand = lv.filter(l => Math.abs(l - M) <= 6).length / Math.max(1, lv.length);
     let last = P.D1;
@@ -337,9 +341,10 @@ function drawTop(P, mode) {
     s += `<text x="${X(P.xm + P.Dg / 2)}" y="${Y(-0.35)}" text-anchor="middle" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">embaixo da galeria</text>`;
   }
   if (P.gal && P.Gl > 0) {
-    for (const [ya, yb] of [[0, P.Gl], [P.W - P.Gl, P.W]])
+    for (const [ya, yb] of latSides(P)) {
       s += `<rect x="${X(P.xs)}" y="${Y(ya)}" width="${P.Lg * K}" height="${(yb - ya) * K}" style="fill:none;stroke:var(--fg);stroke-width:2;stroke-dasharray:8 6"/>`;
-    s += `<text x="${X(P.xs + P.Lg / 2)}" y="${(+Y(P.Gl / 2) + fs / 3).toFixed(1)}" text-anchor="middle" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">galeria</text>`;
+      s += `<text x="${X(P.xs + P.Lg / 2)}" y="${(+Y((ya + yb) / 2) + fs / 3).toFixed(1)}" text-anchor="middle" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">galeria</text>`;
+    }
   }
   if (mode === "sub") {
     for (const b of subs(P)) s += `<rect x="${X(b.x - 0.3)}" y="${Y(b.y - 0.3)}" width="${0.6 * K}" height="${0.6 * K}" style="fill:var(--fg);stroke:#000"/>`;

@@ -43,21 +43,25 @@ const STEPS = {
   galFloor: { kind: "floor", at: [0.5, 0.68], title: "Galeria · chão", text: "Mire no <b>chão, logo embaixo da frente da galeria</b> (onde a borda dela cairia no piso)." },
   galUnder: { kind: "up", side: "galUnder", title: "Galeria · embaixo", text: "Sem sair do lugar, mire na <b>parte de baixo da frente da galeria</b>, em cima do ponto anterior." },
   galTop: { kind: "up", side: "galTop", title: "Galeria · mureta", text: "Mire no <b>topo da mureta</b> da galeria, em cima dos pontos anteriores." },
-  galSide: { kind: "floor", at: [0.16, 0.8], title: "Galeria lateral · largura", text: "Ainda virado para a esquerda, mire no <b>chão, embaixo da borda da galeria lateral</b> (onde a borda dela cairia no piso)." },
-  galSideStart: { kind: "floor", at: [0.16, 0.6], title: "Galeria lateral · comprimento", text: "Mire no <b>chão, no ponto onde a galeria lateral termina</b>, o mais perto do palco, na mesma linha da borda." },
+  galSide: { kind: "floor", at: [0.16, 0.8], mirror: true, title: "Galeria lateral · largura", text: side => `${side === "right" ? "Vire para a <b>direita</b>" : "Ainda virado para a <b>esquerda</b>"}, mire no <b>chão, embaixo da borda da galeria lateral</b> (onde a borda dela cairia no piso).` },
+  galSideStart: { kind: "floor", at: [0.16, 0.6], mirror: true, title: "Galeria lateral · comprimento", text: "Mire no <b>chão, no ponto onde a galeria lateral termina</b>, o mais perto do palco, na mesma linha da borda." },
   stage: { kind: "floor", at: [0.5, 0.12], title: "Frente do palco", text: "Vire de <b>frente para o palco</b>. Mire no <b>chão, na beirada do palco</b>, no meio dele." },
   stageTop: { kind: "up", side: "stageTop", title: "Altura do palco", text: "Mire no <b>topo da beirada do palco</b>, bem em cima do ponto anterior." },
   left: { kind: "floor", at: [0.0, 0.55], title: "Parede da esquerda", text: "Vire para a <b>parede da esquerda</b>. Mire no <b>chão, na base da parede</b>." },
   ceil: { kind: "up", side: "ceil", title: "Altura do teto", text: "Sem sair do lugar, mire onde a <b>parede da esquerda encontra o teto</b>, em cima do ponto anterior. Se o teto for inclinado, mire na parte mais alta da parede." },
   right: { kind: "floor", at: [1.0, 0.55], title: "Parede da direita", text: "Vire para a <b>parede da direita</b>. Mire no <b>chão, na base da parede</b>." }
 };
-const ORDER = (gal, side) => ["back", ...(gal ? ["galFloor", "galUnder", "galTop"] : []), "stage", "stageTop", "left", "ceil", ...(gal && side ? ["galSide", "galSideStart"] : []), "right"];
+// side: "none" | "left" | "right" | "both" (esquerda e direita de quem olha para o palco; "both" mede o lado esquerdo e supõe igual)
+const ORDER = (gal, side) => {
+  const g = gal && side && side !== "none" ? ["galSide", "galSideStart"] : [];
+  return ["back", ...(gal ? ["galFloor", "galUnder", "galTop"] : []), "stage", "stageTop", "left", "ceil", ...(side === "right" ? ["right", ...g] : [...g, "right"])];
+};
 
 /* ---------- cálculo ---------- */
 function solve(M, h, gal, side) {
   const warns = [], P = {};
-  side = !!(gal && side);
-  for (const k of ["back", "stage", "left", "right", ...(gal ? ["galFloor"] : []), ...(side ? ["galSide", "galSideStart"] : [])]) {
+  side = gal && side && side !== "none" ? side : "none";
+  for (const k of ["back", "stage", "left", "right", ...(gal ? ["galFloor"] : []), ...(side !== "none" ? ["galSide", "galSideStart"] : [])]) {
     P[k] = floorPoint(M[k], h);
     if (!P[k]) return { err: `O ponto "${STEPS[k].title}" não ficou no chão. Refaça esse passo apontando mais para baixo.` };
   }
@@ -74,8 +78,9 @@ function solve(M, h, gal, side) {
     vals.Hg = under + 0.2;                                  // + espessura aproximada do piso
     vals.Mur = Math.max(0.3, top - vals.Hg);
     vals.Dg = (P.galFloor.x - P.back.x) * u[0] + (P.galFloor.y - P.back.y) * u[1];
-    if (side) {
-      vals.Gl = Math.abs((P.galSide.x - P.left.x) * n[0] + (P.galSide.y - P.left.y) * n[1]);
+    if (side !== "none") {
+      const ref = side === "right" ? P.right : P.left;
+      vals.Gl = Math.abs((P.galSide.x - ref.x) * n[0] + (P.galSide.y - ref.y) * n[1]);
       vals.Lg = Math.abs((P.galSideStart.x - P.back.x) * u[0] + (P.galSideStart.y - P.back.y) * u[1]);
     } else vals.Gl = 0;
   }
@@ -88,17 +93,18 @@ function solve(M, h, gal, side) {
   if (worst > 0.12) warns.push(`O ponto "${STEPS[worstK].title}" estava longe (${num(Math.hypot(P[worstK].x, P[worstK].y), 0)} m): a medida dele pode errar uns ${Math.round(worst * 100)}%. Fique mais perto desse ponto, ou corrija a escala com uma trena (abaixo).`);
   if (W < 3 || W > 40) warns.push("A largura deu fora do normal. Confira a altura do celular e refaça.");
   if (Hc < 2.5 || Hc > 20) warns.push("A altura do teto deu fora do normal. Confira a altura do celular e refaça.");
-  return { vals, warns, worst };
+  return { vals, warns, worst, gs: { both: 0, left: 1, right: 2, none: 0 }[side] };
 }
 
 /* ---------- desenhos de ajuda ---------- */
 function diagram(s, gal, side) {
   if (s.kind === "floor") {
-    const X = 8 + 84 * s.at[0], Y = 8 + 104 * s.at[1];
+    const X = 8 + 84 * (s.mirror && side === "right" ? 1 - s.at[0] : s.at[0]), Y = 8 + 104 * s.at[1];
     return `<svg viewBox="0 0 100 120" aria-hidden="true"><rect x="8" y="8" width="84" height="104" rx="3" fill="none" stroke="#8b9a98" stroke-width="2"/>
       <rect x="8" y="8" width="84" height="16" fill="#3a444b"/><text x="50" y="20" text-anchor="middle" font-size="9" fill="#cfd6d4">palco</text>
       ${gal ? '<rect x="8" y="84" width="84" height="28" fill="none" stroke="#8b9a98" stroke-dasharray="4 3"/><text x="50" y="102" text-anchor="middle" font-size="8" fill="#8b9a98">galeria</text>' : ""}
-      ${gal && side ? '<rect x="8" y="54" width="16" height="58" fill="none" stroke="#8b9a98" stroke-dasharray="4 3"/><rect x="76" y="54" width="16" height="58" fill="none" stroke="#8b9a98" stroke-dasharray="4 3"/>' : ""}
+      ${gal && (side === "left" || side === "both") ? '<rect x="8" y="54" width="16" height="58" fill="none" stroke="#8b9a98" stroke-dasharray="4 3"/>' : ""}
+      ${gal && (side === "right" || side === "both") ? '<rect x="76" y="54" width="16" height="58" fill="none" stroke="#8b9a98" stroke-dasharray="4 3"/>' : ""}
       <line x1="50" y1="64" x2="${X}" y2="${Y}" stroke="#f2b544" stroke-width="2" stroke-dasharray="4 3"/>
       <circle cx="50" cy="64" r="5" fill="#7fd3e6"/><circle cx="${X}" cy="${Y}" r="6" fill="#ff5b4f" stroke="#fff" stroke-width="2"/></svg>`;
   }
@@ -146,7 +152,7 @@ async function start() {
     return;
   }
   const gal = $("#scGal").checked;
-  const side = gal && $("#scGalSide").checked;
+  const side = gal ? $("#scGalSide").value : "none";
   S = { h, gal, side, stream, steps: ORDER(gal, side), i: 0, marks: {}, cur: null, anchor: null, t0: 0, acc: [], armed: true, last: null, got: 0, lock: 0 };
   const v = $("#scVideo"); v.srcObject = stream; v.play().catch(() => {});
   $("#scOverlay").hidden = false;
@@ -169,7 +175,7 @@ function stop() {
 function show() {
   const key = S.steps[S.i], s = STEPS[key];
   $("#scNo").textContent = `Ponto ${S.i + 1} de ${S.steps.length} · ${s.title}`;
-  $("#scText").innerHTML = s.text;
+  $("#scText").innerHTML = typeof s.text === "function" ? s.text(S.side) : s.text;
   $("#scDiag").innerHTML = diagram(s, S.gal, S.side);
   $("#scRing").style.strokeDashoffset = ringLen;
   $("#scBack").disabled = S.i === 0;
@@ -267,12 +273,16 @@ $("#scFix").addEventListener("click", () => {
 $("#scApply").addEventListener("click", () => {
   if (!result || !result.vals) return;
   for (const [k, v] of Object.entries(result.vals)) window.CM.setPlan(k, Math.max(0, v));
+  if ("Gl" in result.vals) window.CM.setPlan("Gs", result.gs || 0);
   if ("Hg" in result.vals && window.CM.setPlanGal) window.CM.setPlanGal(true);
   toast("Medidas aplicadas na planta. Ela já foi redesenhada.");
 });
 try { const a = parseFloat(localStorage.getItem("cm_alt")); if (a >= 120 && a <= 220) $("#scH").value = a; } catch (e) {}
 $("#scGal").checked = window.CM.planta ? window.CM.planta.state().gal : true;
-$("#scGalSide").checked = window.CM.planta ? window.CM.planta.state().v.Gl > 0 : false;
+{
+  const v = window.CM.planta ? window.CM.planta.state().v : { Gl: 0, Gs: 0 };
+  $("#scGalSide").value = !(v.Gl > 0) ? "none" : ["both", "left", "right"][v.Gs | 0];
+}
 const syncSide = () => { $("#scGalSideRow").hidden = !$("#scGal").checked; };
 $("#scGal").addEventListener("change", syncSide); syncSide();
 for (const t of ["input", "change"]) $("#scPanel").addEventListener(t, e => e.stopPropagation());
