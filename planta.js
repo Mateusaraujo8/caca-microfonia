@@ -37,7 +37,8 @@ for (const [grp, id, label, , step] of FIELDS) {
   l.firstChild.textContent = label;
   $("#plF_" + grp).append(l);
 }
-let state = { v: { ...DEF }, gal: true, sub: "lados", f: 63, edited: false, view: "side", fills: false };
+let state = { v: { ...DEF }, gal: true, sub: "lados", f: 63, edited: false, view: "side", fills: false, meas: [], showMeas: false };
+let pick = null, topGeom = null;   // ponto escolhido na planta para medir; geometria do desenho de cima
 try { const s = JSON.parse(localStorage.getItem("cm_planta") || "null"); if (s && s.v) state = { ...state, ...s, v: { ...DEF, ...s.v } }; } catch (e) {}
 const save = () => { try { localStorage.setItem("cm_planta", JSON.stringify(state)); } catch (e) {} };
 
@@ -59,7 +60,16 @@ $("#viewPl").addEventListener("input", e => {
 });
 $("#viewPl").addEventListener("change", e => { if (e.target.id === "plFill") { state.fills = e.target.checked; save(); draw(); return; } if (e.target.id === "pGal" || e.target.id === "pSub") { readForm(); state.edited = true; $("#plExample").hidden = true; save(); draw(); } });
 document.querySelectorAll("#viewPl .segb").forEach(b => b.addEventListener("click", () => { state.view = b.dataset.pv; fillForm(); save(); draw(); }));
-$("#plReset").addEventListener("click", () => { state = { v: { ...DEF }, gal: true, sub: "lados", f: 63, edited: false, view: state.view, fills: false }; $("#plOptMsg").hidden = true; fillForm(); save(); draw(); });
+$("#plSvgBox").addEventListener("click", e => {
+  const svg = $("#plSvgBox svg");
+  if (!svg || !topGeom || state.view !== "top") return;
+  const r = svg.getBoundingClientRect(), P = geo();
+  const x = (e.clientX - r.left) / r.width * topGeom.vw / topGeom.K + topGeom.x0, y = (e.clientY - r.top) / r.height * topGeom.vh / topGeom.K - 1.2;
+  if (x < 0 || x > P.L || y < 0 || y > P.W) return;
+  pick = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+  draw(); window.CM.onPick && window.CM.onPick(pick);
+});
+$("#plReset").addEventListener("click", () => { state = { v: { ...DEF }, gal: true, sub: "lados", f: 63, edited: false, view: state.view, fills: false, meas: state.meas, showMeas: state.showMeas }; $("#plOptMsg").hidden = true; fillForm(); save(); draw(); });
 
 /* ---------- geometria e som ---------- */
 function geo() {
@@ -308,6 +318,7 @@ function drawSide(P) {
 function drawTop(P, mode) {
   const K = 26, pad = 1, x0 = -P.Ps - pad, x1 = P.L + pad, W = (x1 - x0) * K, H = (P.W + 2.4) * K, fs = Math.max(13, W / 52);
   const X = x => ((x - x0) * K).toFixed(1), Y = y => ((y + 1.2) * K).toFixed(1);
+  topGeom = { x0, K, vw: W, vh: H };
   let s = `<svg viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" role="img" aria-label="Igreja vista de cima">`;
   s += `<rect x="${X(-P.Ps)}" y="${Y(0)}" width="${(P.Ps + P.L) * K}" height="${P.W * K}" style="fill:#12171a;stroke:var(--line);stroke-width:2"/>`;
   s += `<rect x="${X(-P.Ps)}" y="${Y(0)}" width="${P.Ps * K}" height="${P.W * K}" style="fill:#2a3238"/>`;
@@ -315,9 +326,11 @@ function drawTop(P, mode) {
   const step = 0.5, cells = [];
   const wz = mode === "sub" ? { zones: [] } : weakZones(P);
   const fills = state.fills ? wz.zones.flatMap(z => z.fills) : null;
+  const useMeas = mode === "top" && state.showMeas && state.meas.length >= 3;
+  const idw = (x, y) => { let sw = 0, sl = 0; for (const m of state.meas) { const w = 1 / ((x - m.x) ** 2 + (y - m.y) ** 2 + 1); sw += w; sl += w * m.L; } return sl / sw; };
   for (let x = P.D1 + step / 2; x < P.L; x += step) for (let y = step / 2; y < P.W; y += step)
-    cells.push({ x, y, L: mode === "sub" ? subLevel(P, x, y, state.f) : topLevel(P, x, y, fills) });
-  const M = mode === "sub" ? median(cells.map(c => c.L)) : wz.M; // mesma régua com e sem reforço, para ver a melhora
+    cells.push({ x, y, L: useMeas ? idw(x, y) : mode === "sub" ? subLevel(P, x, y, state.f) : topLevel(P, x, y, fills) });
+  const M = useMeas ? median(state.meas.map(m => m.L)) : mode === "sub" ? median(cells.map(c => c.L)) : wz.M; // mesma régua com e sem reforço, para ver a melhora
   for (const c of cells) s += `<rect x="${X(c.x - step / 2)}" y="${Y(c.y - step / 2)}" width="${step * K + 0.6}" height="${step * K + 0.6}" style="fill:${colorOf(c.L - M)};opacity:.82"/>`;
   if (P.gal) {
     s += `<rect x="${X(P.xm)}" y="${Y(0)}" width="${P.Dg * K}" height="${P.W * K}" style="fill:none;stroke:var(--fg);stroke-width:2;stroke-dasharray:8 6"/>`;
@@ -326,7 +339,7 @@ function drawTop(P, mode) {
   if (P.gal && P.Gl > 0) {
     for (const [ya, yb] of [[0, P.Gl], [P.W - P.Gl, P.W]])
       s += `<rect x="${X(P.xs)}" y="${Y(ya)}" width="${P.Lg * K}" height="${(yb - ya) * K}" style="fill:none;stroke:var(--fg);stroke-width:2;stroke-dasharray:8 6"/>`;
-    s += `<text x="${X(P.xs + P.Lg / 2)}" y="${Y(P.Gl / 2) + fs / 3}" text-anchor="middle" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">galeria</text>`;
+    s += `<text x="${X(P.xs + P.Lg / 2)}" y="${(+Y(P.Gl / 2) + fs / 3).toFixed(1)}" text-anchor="middle" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">galeria</text>`;
   }
   if (mode === "sub") {
     for (const b of subs(P)) s += `<rect x="${X(b.x - 0.3)}" y="${Y(b.y - 0.3)}" width="${0.6 * K}" height="${0.6 * K}" style="fill:var(--fg);stroke:#000"/>`;
@@ -343,20 +356,28 @@ function drawTop(P, mode) {
     wz.zones.forEach((z, zi) => {
       if (!state.fills) {
         s += `<rect x="${X(z.x0)}" y="${Y(z.y0)}" width="${(z.x1 - z.x0) * K}" height="${(z.y1 - z.y0) * K}" style="fill:none;stroke:var(--hot);stroke-width:2;stroke-dasharray:4 4"/>`;
-        s += `<text x="${X((z.x0 + z.x1) / 2)}" y="${Y((z.y0 + z.y1) / 2) + fs / 3}" text-anchor="middle" style="fill:#fff;font:700 ${fs}px var(--f-mono);paint-order:stroke;stroke:#000;stroke-width:3px">falta som</text>`;
+        s += `<text x="${X((z.x0 + z.x1) / 2)}" y="${(+Y((z.y0 + z.y1) / 2) + fs / 3).toFixed(1)}" text-anchor="middle" style="fill:#fff;font:700 ${fs}px var(--f-mono);paint-order:stroke;stroke:#000;stroke-width:3px">falta som</text>`;
       }
       for (const f of z.fills) {
         s += `<circle cx="${X(f.x)}" cy="${Y(f.y)}" r="${0.28 * K}" style="fill:var(--trace);stroke:#000;stroke-width:1.5"/>`;
-        s += `<text x="${X(f.x + 0.45)}" y="${Y(f.y) + fs / 3}" style="fill:var(--trace);font:700 ${fs}px var(--f-mono);paint-order:stroke;stroke:#000;stroke-width:3px">reforço · ${f.ms} ms</text>`;
+        s += `<text x="${X(f.x + 0.45)}" y="${(+Y(f.y) + fs / 3).toFixed(1)}" style="fill:var(--trace);font:700 ${fs}px var(--f-mono);paint-order:stroke;stroke:#000;stroke-width:3px">reforço · ${f.ms} ms</text>`;
       }
     });
   }
   s += `<line x1="${X(-P.Mic)}" y1="${Y(P.W * 0.3)}" x2="${X(-P.Mic)}" y2="${Y(P.W * 0.7)}" style="stroke:var(--fg);stroke-width:2;stroke-dasharray:2 6"/>`;
+  if (mode === "top") {
+    const med = state.meas.length ? median(state.meas.map(m => m.L)) : 0;
+    state.meas.forEach(m => {
+      s += `<circle cx="${X(m.x)}" cy="${Y(m.y)}" r="${0.32 * K}" style="fill:#000;stroke:#fff;stroke-width:2"/>`;
+      s += `<text x="${X(m.x)}" y="${(+Y(m.y) + fs / 3).toFixed(1)}" text-anchor="middle" style="fill:#fff;font:700 ${fs * 0.8}px var(--f-mono)">${m.L - med >= 0 ? "+" : "−"}${Math.abs(Math.round(m.L - med))}</text>`;
+    });
+    if (pick) s += `<g style="stroke:var(--trace);stroke-width:3;fill:none"><circle cx="${X(pick.x)}" cy="${Y(pick.y)}" r="${0.5 * K}"/><line x1="${X(pick.x) - 0.8 * K}" y1="${Y(pick.y)}" x2="${+X(pick.x) + 0.8 * K}" y2="${Y(pick.y)}"/><line x1="${X(pick.x)}" y1="${Y(pick.y) - 0.8 * K}" x2="${X(pick.x)}" y2="${+Y(pick.y) + 0.8 * K}"/></g>`;
+  }
   s += `<text x="${X(-P.Ps / 2)}" y="${Y(P.W + 0.85)}" text-anchor="middle" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">palco</text>`;
   s += `<text x="${X(P.L)}" y="${Y(P.W + 0.85)}" text-anchor="end" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">fundo · ${num(P.W, 1)} m de largura</text>`;
   s += "</svg>";
   $("#plSvgBox").innerHTML = s;
-  legend(mode === "sub" ? `<span><i style="background:var(--fg)"></i>Subs</span>` : `<span><i style="background:var(--amber)"></i>Caixas (tracejado: cobertura)</span><span><i style="background:var(--trace);border-radius:50%"></i>Caixa de reforço sugerida (com delay)</span><span>Contorno vermelho: falta som</span><span>Linha pontilhada: microfones</span>`);
+  legend(mode === "sub" ? `<span><i style="background:var(--fg)"></i>Subs</span>` : `<span><i style="background:var(--amber)"></i>Caixas (tracejado: cobertura)</span><span><i style="background:var(--trace);border-radius:50%"></i>Caixa de reforço sugerida (com delay)</span><span>Contorno vermelho: falta som</span><span>Linha pontilhada: microfones</span>` + (useMeas ? `<span><b>Cores = som MEDIDO</b> em ${state.meas.length} pontos (número = dB acima ou abaixo da média)</span>` : ""));
   return { cells, M };
 }
 
@@ -439,6 +460,17 @@ function recommend(P) {
     add(area > 40 ? "bad" : "warn", `Falta som em <b>${wz.zones.length} ${wz.zones.length > 1 ? "zonas" : "zona"}</b> (~${Math.round(area)} m² no total). Coloque <b>${nf} caixa${nf > 1 ? "s" : ""} de reforço</b> apontando para o fundo: ${list}. O delay faz o som da principal chegar primeiro e a voz parecer vir do palco. Marque "Ver com as caixas de reforço" para ver o resultado.`);
   }
 
+  // 6c. o que foi medido de verdade
+  if (state.meas.length >= 3) {
+    const med = median(state.meas.map(m => m.L)), mod = state.meas.map(m => topLevel(P, m.x, m.y)), modMed = median(mod);
+    const where = m => `a ${num(m.x, 1)} m do palco e ${num(m.y, 1)} m da borda de cima do desenho`;
+    const weak = state.meas.map(m => ({ m, d: m.L - med })).filter(o => o.d < -4).sort((a, b) => a.d - b.d).slice(0, 3);
+    if (weak.length) add(weak[0].d < -8 ? "bad" : "warn", `<b>Medido:</b> o som real fica fraco nestes pontos: ${weak.map(o => `${where(o.m)} (${Math.round(o.d)} dB em relação à média)`).join("; ")}. Reforço de caixa ou virar as principais para esses lugares ajuda.`);
+    else add("ok", `<b>Medido:</b> nos ${state.meas.length} pontos medidos o volume é parecido (diferença menor que 4 dB).`);
+    const err = state.meas.reduce((a, m, i) => a + Math.abs((m.L - med) - (mod[i] - modMed)), 0) / state.meas.length;
+    add(err > 4 ? "warn" : "ok", err > 4 ? `O cálculo do app erra em média <b>${Math.round(err)} dB</b> em relação ao que você mediu (a sala tem reflexões que o modelo não conhece). Confie mais nas medições.` : `O cálculo do app bate com o que você mediu (diferença média de ${num(err, 1)} dB).`);
+  }
+
   // 7. subs
   if (state.sub === "lados") {
     const s = P.W - 2 * P.Sw, lam = C_SOM / state.f, D = (P.D1 + P.L) / 2;
@@ -456,6 +488,7 @@ function recommend(P) {
 /* ---------- desenhar ---------- */
 function draw() {
   if ($("#viewPl").hidden) return;
+  window.CM.onDraw && window.CM.onDraw();
   const P = geo();
   $("#plFreqRow").hidden = state.view !== "sub";
   if (state.view === "side") drawSide(P); else drawTop(P, state.view === "sub" ? "sub" : "top");
@@ -470,5 +503,13 @@ window.CM.setPlan = (id, v) => {
   fillForm(); save(); draw();
 };
 window.CM.setPlanGal = on => { state.gal = !!on; state.edited = true; fillForm(); save(); draw(); };
-window.CM.planta = { geo, sideLevel, topLevel, subLevel, blocked, state: () => state };
+window.CM.planta = {
+  geo, sideLevel, topLevel, subLevel, blocked, state: () => state,
+  getPick: () => pick, setPick: p => { pick = p; draw(); },
+  addMeas: m => { state.meas.push(m); save(); draw(); },
+  delMeas: i => { state.meas.splice(i, 1); save(); draw(); },
+  clearMeas: () => { state.meas = []; pick = null; save(); draw(); },
+  setShow: on => { state.showMeas = !!on; save(); draw(); },
+  setView: v => { state.view = v; fillForm(); save(); draw(); }
+};
 })();

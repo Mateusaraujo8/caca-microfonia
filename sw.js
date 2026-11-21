@@ -1,5 +1,5 @@
-const CACHE = "caca-microfonia-v12";
-const FILES = ["./", "index.html", "comum.js", "medir.js", "caixas.js", "planta.js", "planta-foto.js", "scan.js", "marcador.html", "manifest.json", "icon.svg"];
+const CACHE = "caca-microfonia-v14";
+const FILES = ["./", "index.html", "comum.js", "medir.js", "caixas.js", "planta.js", "planta-foto.js", "scan.js", "medicao.js", "marcador.html", "manifest.json", "icon.svg"];
 const CDN = ["cdn.jsdelivr.net", "cdnjs.cloudflare.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 
 self.addEventListener("install", e => {
