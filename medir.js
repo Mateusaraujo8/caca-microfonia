@@ -3,7 +3,7 @@
    correção de perspectiva pelo marcador (homografia) e ponto que gruda na borda. */
 "use strict";
 (() => {
-const { $, num, css, setCalc } = window.CM;
+const { $, num, css, setCalc, planSelect } = window.CM;
 const cv = $("#photo"), g = cv.getContext("2d");
 let img = null, iw = 0, ih = 0, scale = 1, dpr = 1;
 let mode = "ref", lines = [], pending = null, drag = null;
@@ -428,6 +428,7 @@ function refresh() {
       if (l.type === "ang") { b.textContent = "Usar"; b.title = "Usar como inclinação nas Contas rápidas"; b.onclick = () => setCalc("cTilt", Math.round(tiltDeg(l)), "Inclinação"); }
       else { b.textContent = "Altura"; b.title = "Usar como altura da caixa nas Contas rápidas"; b.onclick = () => { const v = lenOf(l); if (isFinite(v)) setCalc("cH", v, "Altura da caixa"); }; }
       li.children[3].append(b);
+      if (l.type === "len") li.children[3].append(planSelect(() => lenOf(l)));
     }
     li.children[4].addEventListener("click", () => { lines.splice(i, 1); render(); refresh(); });
     ul.append(li);

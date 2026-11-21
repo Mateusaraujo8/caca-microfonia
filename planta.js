@@ -442,5 +442,11 @@ function draw() {
 }
 window.addEventListener("resize", draw); // a aba chama resize quando aparece
 fillForm();
+window.CM.setPlan = (id, v) => {
+  if (!(id in state.v) || !isFinite(v)) return;
+  state.v[id] = Math.round(v * 100) / 100;
+  state.edited = true;
+  fillForm(); save(); draw();
+};
 window.CM.planta = { geo, sideLevel, topLevel, subLevel, blocked, state: () => state };
 })();

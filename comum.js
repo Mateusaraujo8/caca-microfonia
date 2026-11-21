@@ -42,8 +42,31 @@ window.CM = (() => {
     toast(`${label} enviado para Contas rápidas (aba Caixas)`);
   }
 
+  /* seletor "→ Planta": manda um número em metros para um campo da aba Planta (usado na foto, no AR e nos passos) */
+  const PLAN_FIELDS = [
+    ["L", "Comprimento da igreja"], ["W", "Largura da nave"], ["Hc", "Altura do teto"],
+    ["Ps", "Profundidade do palco"], ["Hs", "Altura do palco"], ["D1", "Palco até a 1ª fileira"],
+    ["Mic", "Microfones atrás da borda do palco"],
+    ["Hg", "Altura da galeria"], ["Dg", "Quanto a galeria avança"], ["Mur", "Altura da mureta"],
+    ["Sh", "Altura da caixa"], ["Sw", "Caixa até a parede lateral"], ["Sx", "Caixa à frente do palco"]
+  ];
+  function planSelect(getVal) {
+    const s = document.createElement("select");
+    s.className = "planSel"; s.setAttribute("aria-label", "Enviar esta medida para a aba Planta");
+    s.innerHTML = '<option value="">→ Planta…</option>' + PLAN_FIELDS.map(([id, t]) => `<option value="${id}">${t}</option>`).join("");
+    s.addEventListener("change", () => {
+      const id = s.value; s.value = "";
+      if (!id) return;
+      const v = getVal();
+      if (!isFinite(v)) { toast("Ainda não há medida para enviar"); return; }
+      const label = PLAN_FIELDS.find(f => f[0] === id)[1];
+      if (window.CM.setPlan) { window.CM.setPlan(id, v); toast(`${label}: ${num(v)} m, enviado para a aba Planta`); }
+    });
+    return s;
+  }
+
   document.addEventListener("DOMContentLoaded", () => show(fromHash()));
   if (document.readyState !== "loading") setTimeout(() => show(fromHash()));
 
-  return { $, num, css, toast, setCalc, show };
+  return { $, num, css, toast, setCalc, show, planSelect };
 })();
