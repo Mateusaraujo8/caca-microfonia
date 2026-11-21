@@ -538,15 +538,20 @@ ol.tips.small{font-size:14px;margin-top:12px}
       <div class="col">
         <section class="panel" id="scPanel">
           <span class="label">Escanear a igreja com a câmera</span>
-          <p class="hint" style="margin-top:8px">Fique em pé <b>no meio da igreja</b> e gire devagar. A câmera abre, você aponta a mira para cada ponto pedido e <b>segura firme por 1 segundo</b>: o app marca sozinho. Sem digitar medidas e sem tocar na tela. Leva uns 2 minutos e todos os pontos ficam perto de você.</p>
-          <div class="refRow"><label for="scH">Altura do celular</label><input type="number" id="scH" step="0.05" min="0.8" max="2.2" value="1.45"><span>m, do chão até o celular na altura dos olhos</span></div>
+          <p class="hint" style="margin-top:8px">Em uns 2 minutos o app mede a igreja pela câmera do celular. Você não digita medidas.</p>
+          <ol class="tips">
+            <li>Fique <b>em pé no meio da igreja</b>.</li>
+            <li>Segure o celular <b>na frente do rosto</b>, sem inclinar, e sempre na mesma altura.</li>
+            <li>O app pede um ponto de cada vez. Aponte o <b>círculo</b> da tela para ele e <b>fique parado</b> até o círculo encher. Depois vá para o próximo.</li>
+          </ol>
+          <div class="refRow"><label for="scH">Qual a sua altura?</label><input type="number" id="scH" step="1" min="120" max="220" value="170"><span>cm (o app usa isso para calcular as distâncias)</span></div>
           <label class="check" for="scGal"><input type="checkbox" id="scGal" checked> A igreja tem galeria</label>
           <div class="controls" style="margin-top:10px"><button class="btn primary" id="scStart">Começar o scan</button></div>
           <p class="status" id="scMsg" hidden style="margin-top:10px"></p>
           <ul class="recs" id="scRes"></ul>
           <div id="scScale" hidden>
-            <p class="note">Tem uma medida real de trena? Escolha qual e digite: o app corrige todas as outras na mesma proporção.</p>
-            <div class="refRow"><select id="scKnown" aria-label="Medida conhecida"></select><input type="number" id="scReal" step="0.01" min="0.1" placeholder="m"><button class="btn small" id="scFix">Corrigir escala</button></div>
+            <p class="note"><b>Opcional:</b> se você mediu alguma coisa com trena, escolha qual e digite o valor. O app melhora a precisão de todas as outras medidas.</p>
+            <div class="refRow"><select id="scKnown" aria-label="Medida conhecida"></select><input type="number" id="scReal" step="0.01" min="0.1" placeholder="m"><button class="btn small" id="scFix">Ajustar</button></div>
           </div>
           <button class="btn primary" id="scApply" hidden style="margin-top:10px">Aplicar na planta</button>
         </section>
