@@ -177,6 +177,23 @@ ol.tips.small{font-size:14px;margin-top:12px}
 .chip.locked{border-color:var(--ok);color:var(--ok)}
 
 /* planta */
+.scOverlay{position:fixed;inset:0;z-index:60;background:#000;color:#fff}
+.scOverlay video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.scTop{position:absolute;left:0;right:0;top:0;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 12px;background:linear-gradient(#000d,#0000)}
+.scNo{font:600 12px/1 var(--f-display);letter-spacing:.1em;text-transform:uppercase;color:var(--amber)}
+.scText{font-size:19px;line-height:1.3;margin-top:6px;text-shadow:0 1px 3px #000;max-width:46ch}
+.scText b{color:var(--amber)}
+.scCross{position:absolute;left:50%;top:50%;width:92px;height:92px;transform:translate(-50%,-50%);pointer-events:none}
+.scCross svg{width:100%;height:100%;transform:rotate(-90deg)}
+.scCross line{stroke:#fff;stroke-width:3;transform-origin:60px 60px;transform:rotate(90deg)}
+.scCross .bg{fill:none;stroke:#fff6;stroke-width:5}
+.scCross .fg{fill:none;stroke:var(--ok);stroke-width:7;stroke-linecap:round;stroke-dasharray:314.16;stroke-dashoffset:314.16}
+.scRead{position:absolute;left:0;right:0;top:calc(50% + 60px);text-align:center;font:600 15px/1.3 var(--f-mono);text-shadow:0 1px 3px #000;padding:0 20px}
+.scBottom{position:absolute;left:0;right:0;bottom:0;display:flex;gap:12px;align-items:flex-end;padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px));background:linear-gradient(#0000,#000d)}
+.scDiag{width:96px;flex:none;background:#000a;border-radius:8px;padding:4px}
+.scDiag svg{display:block;width:100%;height:auto}
+.scBtns{display:flex;flex-direction:column;gap:8px;flex:1}
+.scBtns .btn{width:100%}
 #pfStep{min-height:5.6em}
 #pfBox.big{display:block;overflow:auto;max-height:75vh}
 #pfBox.big #pfCv{width:260%;max-width:none;touch-action:pan-x pan-y}
@@ -519,8 +536,22 @@ ol.tips.small{font-size:14px;margin-top:12px}
         </section>
       </div>
       <div class="col">
+        <section class="panel" id="scPanel">
+          <span class="label">Escanear a igreja com a câmera</span>
+          <p class="hint" style="margin-top:8px">Fique em pé <b>no meio da igreja</b> e gire devagar. A câmera abre, você aponta a mira para cada ponto pedido e <b>segura firme por 1 segundo</b>: o app marca sozinho. Sem digitar medidas e sem tocar na tela. Leva uns 2 minutos e todos os pontos ficam perto de você.</p>
+          <div class="refRow"><label for="scH">Altura do celular</label><input type="number" id="scH" step="0.05" min="0.8" max="2.2" value="1.45"><span>m, do chão até o celular na altura dos olhos</span></div>
+          <label class="check" for="scGal"><input type="checkbox" id="scGal" checked> A igreja tem galeria</label>
+          <div class="controls" style="margin-top:10px"><button class="btn primary" id="scStart">Começar o scan</button></div>
+          <p class="status" id="scMsg" hidden style="margin-top:10px"></p>
+          <ul class="recs" id="scRes"></ul>
+          <div id="scScale" hidden>
+            <p class="note">Tem uma medida real de trena? Escolha qual e digite: o app corrige todas as outras na mesma proporção.</p>
+            <div class="refRow"><select id="scKnown" aria-label="Medida conhecida"></select><input type="number" id="scReal" step="0.01" min="0.1" placeholder="m"><button class="btn small" id="scFix">Corrigir escala</button></div>
+          </div>
+          <button class="btn primary" id="scApply" hidden style="margin-top:10px">Aplicar na planta</button>
+        </section>
         <section class="panel" id="pfPanel">
-          <span class="label">Montar a planta por foto · aproximado</span>
+          <span class="label">Alternativa: planta por foto · menos preciso</span>
           <p class="hint" style="margin-top:8px">Uma foto só, sem digitar medidas. Você toca nos pontos que o app pede e ele calcula pela perspectiva. Erro esperado de uns 10 a 20%: use para ter um ponto de partida e corrija nos campos abaixo.</p>
           <div class="seg" role="group" aria-label="Tipo de foto">
             <button class="pfb on" data-pfm="A">Do fundo para o palco</button>
@@ -565,6 +596,17 @@ ol.tips.small{font-size:14px;margin-top:12px}
         </section>
         <button class="btn small" id="plReset">Voltar aos valores de exemplo</button>
       </div>
+    </div>
+  </div>
+
+  <div id="scOverlay" class="scOverlay" hidden>
+    <video id="scVideo" playsinline muted autoplay></video>
+    <div class="scTop"><div class="scNo" id="scNo"></div><div class="scText" id="scText"></div></div>
+    <div class="scCross" aria-hidden="true"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" class="bg"/><circle cx="60" cy="60" r="50" class="fg" id="scRing"/><line x1="60" y1="46" x2="60" y2="74"/><line x1="46" y1="60" x2="74" y2="60"/></svg></div>
+    <div class="scRead" id="scRead" aria-live="polite"></div>
+    <div class="scBottom">
+      <div class="scDiag" id="scDiag"></div>
+      <div class="scBtns"><button class="btn primary" id="scNow">Marcar agora</button><button class="btn" id="scBack">Voltar um ponto</button><button class="btn stop" id="scExit">Sair</button></div>
     </div>
   </div>
 
@@ -1039,5 +1081,6 @@ if ("serviceWorker" in navigator && location.protocol === "https:") navigator.se
 <script src="caixas.js"></script>
 <script src="planta.js"></script>
 <script src="planta-foto.js"></script>
+<script src="scan.js"></script>
 </body>
 </html>
