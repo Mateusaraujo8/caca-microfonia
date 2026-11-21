@@ -43,18 +43,21 @@ const STEPS = {
   galFloor: { kind: "floor", at: [0.5, 0.68], title: "Galeria · chão", text: "Mire no <b>chão, logo embaixo da frente da galeria</b> (onde a borda dela cairia no piso)." },
   galUnder: { kind: "up", side: "galUnder", title: "Galeria · embaixo", text: "Sem sair do lugar, mire na <b>parte de baixo da frente da galeria</b>, em cima do ponto anterior." },
   galTop: { kind: "up", side: "galTop", title: "Galeria · mureta", text: "Mire no <b>topo da mureta</b> da galeria, em cima dos pontos anteriores." },
+  galSide: { kind: "floor", at: [0.16, 0.8], title: "Galeria lateral · largura", text: "Ainda virado para a esquerda, mire no <b>chão, embaixo da borda da galeria lateral</b> (onde a borda dela cairia no piso)." },
+  galSideStart: { kind: "floor", at: [0.16, 0.6], title: "Galeria lateral · comprimento", text: "Mire no <b>chão, no ponto onde a galeria lateral termina</b>, o mais perto do palco, na mesma linha da borda." },
   stage: { kind: "floor", at: [0.5, 0.12], title: "Frente do palco", text: "Vire de <b>frente para o palco</b>. Mire no <b>chão, na beirada do palco</b>, no meio dele." },
   stageTop: { kind: "up", side: "stageTop", title: "Altura do palco", text: "Mire no <b>topo da beirada do palco</b>, bem em cima do ponto anterior." },
   left: { kind: "floor", at: [0.0, 0.55], title: "Parede da esquerda", text: "Vire para a <b>parede da esquerda</b>. Mire no <b>chão, na base da parede</b>." },
   ceil: { kind: "up", side: "ceil", title: "Altura do teto", text: "Sem sair do lugar, mire onde a <b>parede da esquerda encontra o teto</b>, em cima do ponto anterior. Se o teto for inclinado, mire na parte mais alta da parede." },
   right: { kind: "floor", at: [1.0, 0.55], title: "Parede da direita", text: "Vire para a <b>parede da direita</b>. Mire no <b>chão, na base da parede</b>." }
 };
-const ORDER = gal => ["back", ...(gal ? ["galFloor", "galUnder", "galTop"] : []), "stage", "stageTop", "left", "ceil", "right"];
+const ORDER = (gal, side) => ["back", ...(gal ? ["galFloor", "galUnder", "galTop"] : []), "stage", "stageTop", "left", "ceil", ...(gal && side ? ["galSide", "galSideStart"] : []), "right"];
 
 /* ---------- cálculo ---------- */
-function solve(M, h, gal) {
+function solve(M, h, gal, side) {
   const warns = [], P = {};
-  for (const k of ["back", "stage", "left", "right", ...(gal ? ["galFloor"] : [])]) {
+  side = !!(gal && side);
+  for (const k of ["back", "stage", "left", "right", ...(gal ? ["galFloor"] : []), ...(side ? ["galSide", "galSideStart"] : [])]) {
     P[k] = floorPoint(M[k], h);
     if (!P[k]) return { err: `O ponto "${STEPS[k].title}" não ficou no chão. Refaça esse passo apontando mais para baixo.` };
   }
@@ -71,6 +74,10 @@ function solve(M, h, gal) {
     vals.Hg = under + 0.2;                                  // + espessura aproximada do piso
     vals.Mur = Math.max(0.3, top - vals.Hg);
     vals.Dg = (P.galFloor.x - P.back.x) * u[0] + (P.galFloor.y - P.back.y) * u[1];
+    if (side) {
+      vals.Gl = Math.abs((P.galSide.x - P.left.x) * n[0] + (P.galSide.y - P.left.y) * n[1]);
+      vals.Lg = Math.abs((P.galSideStart.x - P.back.x) * u[0] + (P.galSideStart.y - P.back.y) * u[1]);
+    } else vals.Gl = 0;
   }
   // incerteza: o chão longe é pouco preciso (ângulo raso)
   let worst = 0, worstK = "";
@@ -85,12 +92,13 @@ function solve(M, h, gal) {
 }
 
 /* ---------- desenhos de ajuda ---------- */
-function diagram(s, gal) {
+function diagram(s, gal, side) {
   if (s.kind === "floor") {
     const X = 8 + 84 * s.at[0], Y = 8 + 104 * s.at[1];
     return `<svg viewBox="0 0 100 120" aria-hidden="true"><rect x="8" y="8" width="84" height="104" rx="3" fill="none" stroke="#8b9a98" stroke-width="2"/>
       <rect x="8" y="8" width="84" height="16" fill="#3a444b"/><text x="50" y="20" text-anchor="middle" font-size="9" fill="#cfd6d4">palco</text>
       ${gal ? '<rect x="8" y="84" width="84" height="28" fill="none" stroke="#8b9a98" stroke-dasharray="4 3"/><text x="50" y="102" text-anchor="middle" font-size="8" fill="#8b9a98">galeria</text>' : ""}
+      ${gal && side ? '<rect x="8" y="54" width="16" height="58" fill="none" stroke="#8b9a98" stroke-dasharray="4 3"/><rect x="76" y="54" width="16" height="58" fill="none" stroke="#8b9a98" stroke-dasharray="4 3"/>' : ""}
       <line x1="50" y1="64" x2="${X}" y2="${Y}" stroke="#f2b544" stroke-width="2" stroke-dasharray="4 3"/>
       <circle cx="50" cy="64" r="5" fill="#7fd3e6"/><circle cx="${X}" cy="${Y}" r="6" fill="#ff5b4f" stroke="#fff" stroke-width="2"/></svg>`;
   }
@@ -138,7 +146,8 @@ async function start() {
     return;
   }
   const gal = $("#scGal").checked;
-  S = { h, gal, stream, steps: ORDER(gal), i: 0, marks: {}, cur: null, anchor: null, t0: 0, acc: [], armed: true, last: null, got: 0, lock: 0 };
+  const side = gal && $("#scGalSide").checked;
+  S = { h, gal, side, stream, steps: ORDER(gal, side), i: 0, marks: {}, cur: null, anchor: null, t0: 0, acc: [], armed: true, last: null, got: 0, lock: 0 };
   const v = $("#scVideo"); v.srcObject = stream; v.play().catch(() => {});
   $("#scOverlay").hidden = false;
   window.addEventListener("deviceorientation", onOri);
@@ -161,7 +170,7 @@ function show() {
   const key = S.steps[S.i], s = STEPS[key];
   $("#scNo").textContent = `Ponto ${S.i + 1} de ${S.steps.length} · ${s.title}`;
   $("#scText").innerHTML = s.text;
-  $("#scDiag").innerHTML = diagram(s, S.gal);
+  $("#scDiag").innerHTML = diagram(s, S.gal, S.side);
   $("#scRing").style.strokeDashoffset = ringLen;
   $("#scBack").disabled = S.i === 0;
 }
@@ -206,9 +215,9 @@ function capture(d) {
   show();
 }
 function finish() {
-  const marks = S.marks, h = S.h, gal = S.gal;
+  const marks = S.marks, h = S.h, gal = S.gal, side = S.side;
   stop();
-  result = solve(marks, h, gal);
+  result = solve(marks, h, gal, side);
   render();
 }
 $("#scNow").addEventListener("click", () => {
@@ -222,7 +231,7 @@ $("#scExit").addEventListener("click", stop);
 $("#scStart").addEventListener("click", start);
 
 /* ---------- resultado ---------- */
-const NAMES = { L: "Comprimento da igreja", W: "Largura da nave", Hc: "Altura do teto", Hs: "Altura do palco", Hg: "Altura do piso da galeria", Mur: "Altura da mureta", Dg: "Quanto a galeria avança" };
+const NAMES = { L: "Comprimento da igreja", W: "Largura da nave", Hc: "Altura do teto", Hs: "Altura do palco", Hg: "Altura do piso da galeria", Mur: "Altura da mureta", Dg: "Quanto a galeria avança", Gl: "Galeria lateral: quanto entra na nave", Lg: "Galeria lateral: comprimento" };
 let result = null;
 function render() {
   const ul = $("#scRes"); ul.textContent = "";
@@ -231,6 +240,7 @@ function render() {
   if (result.err) { msg(result.err, "warn"); return; }
   msg("<b>Pronto!</b> Estas são as medidas que o app encontrou. Toque em <b>Aplicar na planta</b> para usar.", "ok");
   for (const [k, v] of Object.entries(result.vals)) {
+    if (k === "Gl" && !(v > 0)) continue;
     const li = document.createElement("li"); li.className = "ok";
     li.innerHTML = `<span class="tag">≈</span><span></span>`;
     li.lastChild.innerHTML = `${NAMES[k]}: <b>${num(v, 1)} m</b>`;
@@ -242,7 +252,7 @@ function render() {
   }
   $("#scApply").hidden = $("#scScale").hidden = false;
   const sel = $("#scKnown"); sel.textContent = "";
-  for (const k of Object.keys(result.vals)) sel.append(new Option(NAMES[k], k));
+  for (const k of Object.keys(result.vals)) if (result.vals[k] > 0) sel.append(new Option(NAMES[k], k));
 }
 $("#scFix").addEventListener("click", () => {
   const k = $("#scKnown").value, real = parseFloat($("#scReal").value);
@@ -262,6 +272,9 @@ $("#scApply").addEventListener("click", () => {
 });
 try { const a = parseFloat(localStorage.getItem("cm_alt")); if (a >= 120 && a <= 220) $("#scH").value = a; } catch (e) {}
 $("#scGal").checked = window.CM.planta ? window.CM.planta.state().gal : true;
+$("#scGalSide").checked = window.CM.planta ? window.CM.planta.state().v.Gl > 0 : false;
+const syncSide = () => { $("#scGalSideRow").hidden = !$("#scGal").checked; };
+$("#scGal").addEventListener("change", syncSide); syncSide();
 for (const t of ["input", "change"]) $("#scPanel").addEventListener(t, e => e.stopPropagation());
 
 window.CM.scan = { solve, dirFrom, floorPoint, heightAbove, setDwell: ms => { DWELL = ms; }, result: () => result };
