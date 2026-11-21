@@ -17,6 +17,8 @@ const FIELDS = [
   ["galeria", "Hg", "Altura do piso da galeria (m)", 3.2, 0.1],
   ["galeria", "Dg", "Quanto a galeria avança: do fundo até a mureta (m)", 6, 0.5],
   ["galeria", "Mur", "Altura da mureta (m)", 1, 0.1],
+  ["galeria", "Gl", "Galeria nas laterais: quanto ela entra na nave, a partir da parede (m). 0 = não tem", 0, 0.5],
+  ["galeria", "Lg", "Galeria nas laterais: comprimento, a partir do fundo (m)", 8, 0.5],
   ["caixas", "Sx", "Quanto a caixa fica à frente da borda do palco (m). Negativo = em cima do palco", 0.3, 0.1],
   ["caixas", "Sh", "Altura do centro da caixa, a partir do chão da nave (m)", 3, 0.1],
   ["caixas", "St", "Inclinação para baixo (°)", 5, 1],
@@ -74,6 +76,9 @@ function geo() {
   P.St = v.St; P.Sw = Math.max(0.2, Math.min(P.W / 2 - 0.3, v.Sw));
   P.Toe = v.Toe; P.CovH = Math.max(20, Math.min(180, v.CovH)); P.CovV = Math.max(10, Math.min(180, v.CovV));
   P.xm = P.L - P.Dg; // x da mureta
+  P.Gl = P.gal ? Math.max(0, Math.min(P.W / 2 - 1, v.Gl)) : 0;          // galeria lateral: profundidade
+  P.Lg = Math.max(1, Math.min(P.L - P.D1 - 1, v.Lg));                    // e comprimento a partir do fundo
+  P.xs = P.L - P.Lg;                                                     // onde ela começa, vista do palco
   return P;
 }
 // perda fora do eixo: -6 dB na borda da cobertura, cai mais rápido depois
@@ -99,17 +104,26 @@ const speakers = P => [
   { x: P.Sx, y: P.W - P.Sw, ax: -P.Toe }
 ];
 // nível relativo visto de cima (soma das duas caixas, ouvido sentado no piso)
+// quem senta embaixo da galeria lateral: o raio da caixa até o ouvido bate no piso da galeria?
+function sideBlocked(P, s, x, y) {
+  if (P.Gl <= 0 || x <= P.xs) return false;
+  const plane = y < P.Gl ? P.Gl : y > P.W - P.Gl ? P.W - P.Gl : null;
+  if (plane === null || Math.abs(y - s.y) < 1e-6) return false;
+  const t = (plane - s.y) / (y - s.y);
+  if (t <= 0 || t >= 1) return false;
+  return s.x + t * (x - s.x) >= P.xs && P.Sh + t * (EAR - P.Sh) > P.Hg - 0.3;
+}
 function topLevel(P, x, y, fills) {
   let p = 0;
+  const back = blocked(P, x, EAR);
   for (const s of speakers(P)) {
     const dx = x - s.x, dy = y - s.y, hz = Math.hypot(dx, dy);
     if (dx <= 0.05) continue;
     const az = Math.atan2(dy, dx) / D2R, dep = Math.atan2(P.Sh - EAR, hz) / D2R;
     const r = Math.max(0.5, Math.hypot(hz, P.Sh - EAR));
     const L = -20 * Math.log10(r) + offAtt(az - s.ax, P.CovH) + offAtt(dep - P.St, P.CovV);
-    p += Math.pow(10, L / 10);
+    p += Math.pow(10, L / 10) * (back || sideBlocked(P, s, x, y) ? 0.1 : 1);
   }
-  if (blocked(P, x, EAR)) p *= 0.1;
   // caixas de reforço: apontam para o fundo, ajustadas para igualar o volume da principal naquele ponto
   for (const f of fills || []) {
     const dx = x - f.x, dy = y - f.y, hz = Math.hypot(dx, dy);
@@ -144,9 +158,11 @@ function weakZones(P) {
     const xs = cs.map(c => P.D1 + STEP * c[0]), ys = cs.map(c => STEP * c[1]);
     const z = { area: cs.length * STEP * STEP, x0: Math.min(...xs), x1: Math.max(...xs) + STEP, y0: Math.min(...ys), y1: Math.max(...ys) + STEP, fills: [] };
     const n = Math.max(1, Math.round((z.y1 - z.y0) / 4)), span = (z.y1 - z.y0) / n;
-    const h = P.gal && z.x0 >= P.xm - 0.6 ? P.Hg - 0.5 : 2.5;
-    for (let k = 0; k < n; k++) {
-      const f = { x: z.x0 + 0.4, y: z.y0 + span * (k + 0.5), h };
+    const nfx = Math.max(1, Math.round((z.x1 - z.x0) / 6)), sx = (z.x1 - z.x0) / nfx;
+    const underG = P.gal && (z.x0 >= P.xm - 0.6 || (P.Gl > 0 && z.x0 >= P.xs - 0.6 && (z.y1 <= P.Gl + 0.5 || z.y0 >= P.W - P.Gl - 0.5)));
+    const h = underG ? P.Hg - 0.5 : 2.5;
+    for (let j = 0; j < nfx; j++) for (let k = 0; k < n; k++) {
+      const f = { x: z.x0 + 0.4 + j * sx, y: z.y0 + span * (k + 0.5), h };
       const d = Math.min(...speakers(P).map(sp => Math.hypot(f.x - sp.x, f.y - sp.y, P.Sh - h)));
       f.ms = Math.round(d / C_SOM * 1000 + 8);
       z.fills.push(f);
@@ -165,7 +181,7 @@ function scorePlan(v) {
   try {
     const P = geo(), xEnd = P.gal ? P.xm : P.L;
     const lv = [];
-    for (let x = P.D1 + 0.4; x < xEnd; x += 0.7) for (let y = 0.4; y < P.W; y += 0.7) lv.push(topLevel(P, x, y));
+    for (let x = P.D1 + 0.4; x < xEnd; x += 0.7) for (let y = 0.4; y < P.W; y += 0.7) { if (P.Gl > 0 && x > P.xs && (y < P.Gl || y > P.W - P.Gl)) continue; lv.push(topLevel(P, x, y)); }
     const M = median(lv);
     const inBand = lv.filter(l => Math.abs(l - M) <= 6).length / Math.max(1, lv.length);
     let last = P.D1;
@@ -306,6 +322,11 @@ function drawTop(P, mode) {
   if (P.gal) {
     s += `<rect x="${X(P.xm)}" y="${Y(0)}" width="${P.Dg * K}" height="${P.W * K}" style="fill:none;stroke:var(--fg);stroke-width:2;stroke-dasharray:8 6"/>`;
     s += `<text x="${X(P.xm + P.Dg / 2)}" y="${Y(-0.35)}" text-anchor="middle" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">embaixo da galeria</text>`;
+  }
+  if (P.gal && P.Gl > 0) {
+    for (const [ya, yb] of [[0, P.Gl], [P.W - P.Gl, P.W]])
+      s += `<rect x="${X(P.xs)}" y="${Y(ya)}" width="${P.Lg * K}" height="${(yb - ya) * K}" style="fill:none;stroke:var(--fg);stroke-width:2;stroke-dasharray:8 6"/>`;
+    s += `<text x="${X(P.xs + P.Lg / 2)}" y="${Y(P.Gl / 2) + fs / 3}" text-anchor="middle" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">galeria</text>`;
   }
   if (mode === "sub") {
     for (const b of subs(P)) s += `<rect x="${X(b.x - 0.3)}" y="${Y(b.y - 0.3)}" width="${0.6 * K}" height="${0.6 * K}" style="fill:var(--fg);stroke:#000"/>`;
