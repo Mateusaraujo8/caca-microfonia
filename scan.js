@@ -43,13 +43,13 @@ const STEPS = {
   galFloor: { kind: "floor", at: [0.5, 0.68], title: "Galeria · chão", text: "Mire no <b>chão, logo embaixo da frente da galeria</b> (onde a borda dela cairia no piso)." },
   galUnder: { kind: "up", side: "galUnder", title: "Galeria · embaixo", text: "Sem sair do lugar, mire na <b>parte de baixo da frente da galeria</b>, em cima do ponto anterior." },
   galTop: { kind: "up", side: "galTop", title: "Galeria · mureta", text: "Mire no <b>topo da mureta</b> da galeria, em cima dos pontos anteriores." },
-  galSide: { kind: "floor", at: [0.16, 0.8], mirror: true, title: "Galeria lateral · largura", text: side => `${side === "right" ? "Vire para a <b>direita</b>" : "Ainda virado para a <b>esquerda</b>"}, mire no <b>chão, embaixo da borda da galeria lateral</b> (onde a borda dela cairia no piso).` },
+  galSide: { kind: "floor", at: [0.16, 0.8], mirror: true, title: "Galeria lateral · largura", text: side => `${side === "right" ? "Vire para a <b>direita</b> (de quem olha para o palco)" : "Ainda virado para a <b>esquerda</b> (de quem olha para o palco)"}, mire no <b>chão, embaixo da borda da galeria lateral</b> (onde a borda dela cairia no piso).` },
   galSideStart: { kind: "floor", at: [0.16, 0.6], mirror: true, title: "Galeria lateral · comprimento", text: "Mire no <b>chão, no ponto onde a galeria lateral termina</b>, o mais perto do palco, na mesma linha da borda." },
   stage: { kind: "floor", at: [0.5, 0.12], title: "Frente do palco", text: "Vire de <b>frente para o palco</b>. Mire no <b>chão, na beirada do palco</b>, no meio dele." },
   stageTop: { kind: "up", side: "stageTop", title: "Altura do palco", text: "Mire no <b>topo da beirada do palco</b>, bem em cima do ponto anterior." },
-  left: { kind: "floor", at: [0.0, 0.55], title: "Parede da esquerda", text: "Vire para a <b>parede da esquerda</b>. Mire no <b>chão, na base da parede</b>." },
+  left: { kind: "floor", at: [0.0, 0.55], title: "Parede da esquerda", text: "Vire de frente para o palco e depois para a <b>parede da ESQUERDA</b> (a esquerda de quem olha para o palco). Mire no <b>chão, na base da parede</b>." },
   ceil: { kind: "up", side: "ceil", title: "Altura do teto", text: "Sem sair do lugar, mire onde a <b>parede da esquerda encontra o teto</b>, em cima do ponto anterior. Se o teto for inclinado, mire na parte mais alta da parede." },
-  right: { kind: "floor", at: [1.0, 0.55], title: "Parede da direita", text: "Vire para a <b>parede da direita</b>. Mire no <b>chão, na base da parede</b>." }
+  right: { kind: "floor", at: [1.0, 0.55], title: "Parede da direita", text: "Vire de frente para o palco e depois para a <b>parede da DIREITA</b> (a direita de quem olha para o palco). Mire no <b>chão, na base da parede</b>." }
 };
 // side: "none" | "left" | "right" | "both" (esquerda e direita de quem olha para o palco; "both" mede o lado esquerdo e supõe igual)
 const ORDER = (gal, side) => {
