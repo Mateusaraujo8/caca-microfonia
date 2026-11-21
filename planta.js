@@ -189,22 +189,22 @@ function weakZones(P) {
 const sideName = (z, W) => { const c = (z.y0 + z.y1) / 2; return z.y1 - z.y0 > W * 0.7 ? "na largura toda" : c < W * 0.35 ? "do lado de cima do desenho" : c > W * 0.65 ? "do lado de baixo do desenho" : "no meio"; };
 
 /* ---------- sugestão de posição das caixas ---------- */
-function scorePlan(v) {
-  const keep = state.v;
+function scorePlan(v, fast) {   // fast: malha mais grossa, só para a busca; o resultado final é medido na malha fina
+  const keep = state.v, sp = fast ? 1.1 : 0.7, sl = fast ? 1 : 0.5;
   state.v = { ...keep, ...v };
   try {
     const P = geo(), xEnd = P.gal ? P.xm : P.L;
     const lv = [];
-    for (let x = P.D1 + 0.4; x < xEnd; x += 0.7) for (let y = 0.4; y < P.W; y += 0.7) { if (underLat(P, x, y)) continue; lv.push(topLevel(P, x, y)); }
+    for (let x = P.D1 + 0.4; x < xEnd; x += sp) for (let y = 0.4; y < P.W; y += sp) { if (underLat(P, x, y)) continue; lv.push(topLevel(P, x, y)); }
     const M = median(lv);
     const inBand = lv.filter(l => Math.abs(l - M) <= 6).length / Math.max(1, lv.length);
     let last = P.D1;
-    for (let x = P.D1; x <= P.L - 0.5; x += 0.5) if (!blocked(P, x, EAR)) last = x;
+    for (let x = P.D1; x <= P.L - 0.5; x += sl) if (!blocked(P, x, EAR)) last = x;
     const diff = sideLevel(P, P.D1, EAR).L - sideLevel(P, last, EAR).L;
     let galIn = 1;
     if (P.gal) {
       const pts = [];
-      for (let x = P.xm + 0.6; x <= P.L - 0.4; x += 0.5) pts.push(x);
+      for (let x = P.xm + 0.6; x <= P.L - 0.4; x += sl) pts.push(x);
       const ok = pts.filter(x => !blocked(P, x, P.Hg + EAR) && offAtt(Math.atan2(P.Sh - P.Hg - EAR, x - P.Sx) / D2R - P.St, P.CovV) > -9).length;
       galIn = pts.length ? ok / pts.length : 1;
     }
@@ -219,31 +219,31 @@ function scorePlan(v) {
    as combinações, devolve a tela entre as contas (barra de progresso) e para sozinha se passar do tempo. */
 const tick = () => new Promise(r => setTimeout(r, 0));
 async function optimize(onProgress) {
-  const Pn = geo(), t0 = performance.now(), BUDGET = 7000;
+  const Pn = geo(), t0 = performance.now(), BUDGET = 4000;
   const sxMin = Math.max(-Pn.Ps, 1.5 - Pn.Mic);
   const range = (a, b, st) => { const r = []; for (let x = a; x <= b + 1e-9; x += st) r.push(+x.toFixed(2)); return r; };
   const dom = {
-    Sh: range(2.4, Math.max(2.4, Math.min(Pn.Hc - 0.5, 5.5)), 0.4),
-    St: range(0, 28, 2),
-    Toe: range(0, 30, 3),
-    Sw: range(1, Math.max(1, Math.min(Pn.W / 2 - 0.5, 4.5)), 0.5),
+    Sh: range(2.4, Math.max(2.4, Math.min(Pn.Hc - 0.5, 5.5)), 0.5),
+    St: range(0, 28, 3),
+    Toe: range(0, 30, 5),
+    Sw: range(1, Math.max(1, Math.min(Pn.W / 2 - 0.5, 4.5)), 0.75),
     Sx: [sxMin, sxMin + 0.5, sxMin + 1]
   };
   const clamp = (k, v) => dom[k].reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a);
   const mid = k => dom[k][Math.floor(dom[k].length / 2)];
   const cur0 = Object.fromEntries(Object.keys(dom).map(k => [k, clamp(k, state.v[k])]));
   const starts = [cur0, { Sh: mid("Sh"), St: 6, Toe: 9, Sw: clamp("Sw", 1.5), Sx: sxMin }, { Sh: dom.Sh[dom.Sh.length - 1], St: 14, Toe: 18, Sw: clamp("Sw", 3), Sx: sxMin + 0.5 }, { Sh: dom.Sh[1] || dom.Sh[0], St: 2, Toe: 3, Sw: clamp("Sw", 2.5), Sx: sxMin }];
-  const perRound = Object.values(dom).reduce((a, d) => a + d.length, 0), total = starts.length * 3 * perRound;
+  const perRound = Object.values(dom).reduce((a, d) => a + d.length, 0), total = starts.length * 2 * perRound;
   let evals = 0, best = null, last = performance.now();
   const ev = async c => {
-    const r = scorePlan(c); evals++;
+    const r = scorePlan(c, true); evals++;
     const now = performance.now();
     if (now - last > 40) { last = now; onProgress && onProgress(Math.min(0.99, evals / total)); await tick(); }
     return r;
   };
   for (const st of starts) {
     let cur = { ...st }, cs = (await ev(cur));
-    for (let round = 0; round < 3; round++) {
+    for (let round = 0; round < 2; round++) {
       let improved = false;
       for (const k of Object.keys(dom)) for (const val of dom[k]) {
         if (val === cur[k]) continue;
@@ -255,7 +255,8 @@ async function optimize(onProgress) {
     if (!best || cs.score > best.r.score) best = { cand: cur, r: cs };
     if (performance.now() - t0 > BUDGET) break;
   }
-  return { best, before: scorePlan({}), evals, ms: Math.round(performance.now() - t0) };
+  best.r = scorePlan(best.cand);                       // mede o resultado final na malha fina
+  return { best, before: scorePlan({}), evals, ms: Math.round(performance.now() - t0), cut: performance.now() - t0 > BUDGET };
 }
 let optBusy = false;
 $("#plOpt").addEventListener("click", async () => {
@@ -265,13 +266,13 @@ $("#plOpt").addEventListener("click", async () => {
   msg.hidden = false; msg.className = "status"; msg.textContent = "Calculando a melhor posição… 0%";
   await tick();
   try {
-    const { best, before } = await optimize(p => { msg.textContent = `Calculando a melhor posição… ${Math.round(p * 100)}%`; });
+    const { best, before, ms, cut } = await optimize(p => { msg.textContent = `Calculando a melhor posição… ${Math.round(p * 100)}%`; });
     Object.assign(state.v, best.cand);
     state.edited = true; state.fills = true;
     fillForm(); save(); draw();
     const c = best.cand, pct = x => Math.round(x * 100) + "%";
     msg.className = "status ok";
-    msg.innerHTML = `Posição sugerida aplicada: caixa a <b>${num(c.Sh, 1)} m</b> de altura, inclinada <b>${c.St}°</b>, virada <b>${c.Toe}°</b> para o centro, a <b>${num(c.Sw, 2)} m</b> da parede e <b>${num(c.Sx, 1)} m</b> à frente do palco. Lugares com volume parecido: de <b>${pct(before.inBand)}</b> para <b>${pct(best.r.inBand)}</b>. Os campos abaixo já foram atualizados; mexa neles para testar outra ideia.`;
+    msg.innerHTML = `Posição sugerida aplicada: caixa a <b>${num(c.Sh, 1)} m</b> de altura, inclinada <b>${c.St}°</b>, virada <b>${c.Toe}°</b> para o centro, a <b>${num(c.Sw, 2)} m</b> da parede e <b>${num(c.Sx, 1)} m</b> à frente do palco. Lugares com volume parecido: de <b>${pct(before.inBand)}</b> para <b>${pct(best.r.inBand)}</b>. Os campos abaixo já foram atualizados; mexa neles para testar outra ideia. <small>(calculado em ${num(ms / 1000, 1)} s${cut ? ", parou no limite de tempo" : ""})</small>`;
   } finally { optBusy = false; $("#plOpt").disabled = false; }
 });
 const subs = P => state.sub === "centro"
