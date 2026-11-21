@@ -122,8 +122,10 @@ function msg(text, kind) {
 }
 async function start() {
   msg("");
-  const h = parseFloat($("#scH").value);
-  if (!(h > 0.8 && h < 2.3)) { msg("Coloque a altura do celular entre 0,8 e 2,2 m.", "warn"); return; }
+  const alt = parseFloat($("#scH").value);
+  if (!(alt >= 120 && alt <= 220)) { msg("Coloque a sua altura em centímetros, por exemplo 170.", "warn"); return; }
+  try { localStorage.setItem("cm_alt", String(alt)); } catch (e) {}
+  const h = alt / 100 - 0.2;                      // celular na frente do rosto, um pouco abaixo dos olhos
   try {
     await askSensor();
   } catch (e) { msg("Sem permissão para os sensores de movimento. No iPhone, toque em Permitir quando o aviso aparecer; se negou, feche e abra o Safari de novo.", "warn"); return; }
@@ -176,15 +178,16 @@ function onOri(e) {
   S.cur = d;
   const s = STEPS[S.steps[S.i]], bad = valid(d, s);
   const el = elev(d);
-  $("#scRead").textContent = bad || `Inclinação ${el > 0 ? "+" : ""}${el.toFixed(0)}° ${el > 0 ? "(para cima)" : "(para baixo)"}`;
-  if (now < S.lock) { $("#scRing").style.strokeDashoffset = ringLen; return; }
+  if (now < S.lock) {
+    $("#scRead").textContent = "Marcado! Vire para o próximo ponto."; $("#scRing").style.strokeDashoffset = ringLen; return; }
   if (!S.armed) {
-    if (angle(d, S.last) > 2) S.armed = true; else { $("#scRing").style.strokeDashoffset = ringLen; return; }
+    if (angle(d, S.last) > 2) S.armed = true; else { $("#scRead").textContent = "Marcado! Vire para o próximo ponto."; $("#scRing").style.strokeDashoffset = ringLen; return; }
   }
-  if (bad) { S.anchor = null; $("#scRing").style.strokeDashoffset = ringLen; return; }
+  if (bad) { S.anchor = null; $("#scRead").textContent = bad; $("#scRing").style.strokeDashoffset = ringLen; return; }
   if (!S.anchor || angle(d, S.anchor) > STEADY) { S.anchor = d; S.t0 = now; S.acc = []; }
   S.acc.push(d);
   const p = Math.min(1, (now - S.t0) / DWELL);
+  $("#scRead").textContent = p > 0.15 ? "Fique parado…" : "Mire no ponto pedido";
   $("#scRing").style.strokeDashoffset = ringLen * (1 - p);
   if (p >= 1) capture(meanDir(S.acc));
 }
@@ -226,7 +229,7 @@ function render() {
   $("#scApply").hidden = $("#scScale").hidden = true;
   if (!result) return;
   if (result.err) { msg(result.err, "warn"); return; }
-  msg("<b>Scan concluído.</b> Confira os números. Se você tiver uma medida real de trena, corrija a escala abaixo.", "ok");
+  msg("<b>Pronto!</b> Estas são as medidas que o app encontrou. Toque em <b>Aplicar na planta</b> para usar.", "ok");
   for (const [k, v] of Object.entries(result.vals)) {
     const li = document.createElement("li"); li.className = "ok";
     li.innerHTML = `<span class="tag">≈</span><span></span>`;
@@ -257,6 +260,7 @@ $("#scApply").addEventListener("click", () => {
   if ("Hg" in result.vals && window.CM.setPlanGal) window.CM.setPlanGal(true);
   toast("Medidas aplicadas na planta. Ela já foi redesenhada.");
 });
+try { const a = parseFloat(localStorage.getItem("cm_alt")); if (a >= 120 && a <= 220) $("#scH").value = a; } catch (e) {}
 $("#scGal").checked = window.CM.planta ? window.CM.planta.state().gal : true;
 for (const t of ["input", "change"]) $("#scPanel").addEventListener(t, e => e.stopPropagation());
 
