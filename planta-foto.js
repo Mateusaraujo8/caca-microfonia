@@ -269,6 +269,9 @@ function setMode(m) {
   $("#pfHint").innerHTML = m === "A"
     ? "Fique <b>no fundo da igreja</b>, encostado na parede, com o celular na altura do peito, <b>reto</b> (sem apontar para cima ou para baixo) e olhando para o palco. Pegue o chão dos dois lados, o palco e o teto na foto."
     : "Suba no palco, perto da beirada, celular na altura do peito, <b>reto</b>, olhando para o fundo da igreja. Pegue o chão dos dois lados e a frente da galeria. Precisa do comprimento da igreja já preenchido na planta.";
+  if (m === "A" && window.CM.planta && window.CM.planta.state().gal) {
+    $("#pfHint").innerHTML += " <b>Tem galeria:</b> não tire a foto debaixo dela, porque o teto que aparece seria o da galeria. Fique <b>logo na frente da borda da galeria</b>, no chão da igreja, e preencha abaixo a distância até a parede do fundo (use passos ou AR). Depois use a foto do palco para o fundo para medir a galeria.";
+  }
   if (img && example) { example.make(m); } else refresh();
 }
 document.querySelectorAll("#pfPanel .pfb").forEach(b => b.addEventListener("click", () => setMode(b.dataset.pfm)));
