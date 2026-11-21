@@ -35,13 +35,13 @@ for (const [grp, id, label, , step] of FIELDS) {
   l.firstChild.textContent = label;
   $("#plF_" + grp).append(l);
 }
-let state = { v: { ...DEF }, gal: true, sub: "lados", f: 63, edited: false, view: "side" };
+let state = { v: { ...DEF }, gal: true, sub: "lados", f: 63, edited: false, view: "side", fills: false };
 try { const s = JSON.parse(localStorage.getItem("cm_planta") || "null"); if (s && s.v) state = { ...state, ...s, v: { ...DEF, ...s.v } }; } catch (e) {}
 const save = () => { try { localStorage.setItem("cm_planta", JSON.stringify(state)); } catch (e) {} };
 
 function fillForm() {
   for (const [, id] of FIELDS) $("#p_" + id).value = state.v[id];
-  $("#pGal").checked = state.gal; $("#pSub").value = state.sub;
+  $("#pGal").checked = state.gal; $("#pSub").value = state.sub; $("#plFill").checked = !!state.fills;
   $("#pSubF").value = state.f; $("#oSubF").textContent = state.f + " Hz";
   $("#plExample").hidden = state.edited;
   document.querySelectorAll("#viewPl .segb").forEach(b => b.classList.toggle("on", b.dataset.pv === state.view));
@@ -55,9 +55,9 @@ $("#viewPl").addEventListener("input", e => {
   else { readForm(); state.edited = true; $("#plExample").hidden = true; }
   save(); draw();
 });
-$("#viewPl").addEventListener("change", e => { if (e.target.id === "pGal" || e.target.id === "pSub") { readForm(); state.edited = true; $("#plExample").hidden = true; save(); draw(); } });
+$("#viewPl").addEventListener("change", e => { if (e.target.id === "plFill") { state.fills = e.target.checked; save(); draw(); return; } if (e.target.id === "pGal" || e.target.id === "pSub") { readForm(); state.edited = true; $("#plExample").hidden = true; save(); draw(); } });
 document.querySelectorAll("#viewPl .segb").forEach(b => b.addEventListener("click", () => { state.view = b.dataset.pv; fillForm(); save(); draw(); }));
-$("#plReset").addEventListener("click", () => { state = { v: { ...DEF }, gal: true, sub: "lados", f: 63, edited: false, view: state.view }; fillForm(); save(); draw(); });
+$("#plReset").addEventListener("click", () => { state = { v: { ...DEF }, gal: true, sub: "lados", f: 63, edited: false, view: state.view, fills: false }; $("#plOptMsg").hidden = true; fillForm(); save(); draw(); });
 
 /* ---------- geometria e som ---------- */
 function geo() {
@@ -99,7 +99,7 @@ const speakers = P => [
   { x: P.Sx, y: P.W - P.Sw, ax: -P.Toe }
 ];
 // nível relativo visto de cima (soma das duas caixas, ouvido sentado no piso)
-function topLevel(P, x, y) {
+function topLevel(P, x, y, fills) {
   let p = 0;
   for (const s of speakers(P)) {
     const dx = x - s.x, dy = y - s.y, hz = Math.hypot(dx, dy);
@@ -109,9 +109,109 @@ function topLevel(P, x, y) {
     const L = -20 * Math.log10(r) + offAtt(az - s.ax, P.CovH) + offAtt(dep - P.St, P.CovV);
     p += Math.pow(10, L / 10);
   }
-  const b = blocked(P, x, EAR);
-  return (p > 0 ? 10 * Math.log10(p) : -60) - (b ? 10 : 0);
+  if (blocked(P, x, EAR)) p *= 0.1;
+  // caixas de reforço: apontam para o fundo, ajustadas para igualar o volume da principal naquele ponto
+  for (const f of fills || []) {
+    const dx = x - f.x, dy = y - f.y, hz = Math.hypot(dx, dy);
+    const r = Math.max(0.7, Math.hypot(hz, f.h - EAR));
+    p += Math.pow(10, (-20 * Math.log10(r) - 18 + offAtt(Math.atan2(dy, dx) / D2R, 120)) / 10);
+  }
+  return p > 0 ? 10 * Math.log10(p) : -60;
 }
+
+/* ---------- zonas sem som e caixas de reforço ---------- */
+const STEP = 0.5;
+function weakZones(P) {
+  const nx = Math.floor((P.L - P.D1) / STEP), ny = Math.floor(P.W / STEP);
+  if (nx < 2 || ny < 2) return { zones: [], M: 0 };
+  const lv = [];
+  for (let i = 0; i < nx; i++) { lv.push([]); for (let j = 0; j < ny; j++) lv[i].push(topLevel(P, P.D1 + STEP * (i + 0.5), STEP * (j + 0.5))); }
+  const M = median(lv.flat());
+  const weak = lv.map(r => r.map(v => v - M < -6));
+  const seen = lv.map(r => r.map(() => false)), zones = [];
+  for (let i0 = 0; i0 < nx; i0++) for (let j0 = 0; j0 < ny; j0++) {
+    if (!weak[i0][j0] || seen[i0][j0]) continue;
+    const q = [[i0, j0]], cs = [];
+    seen[i0][j0] = true;
+    while (q.length) {
+      const [i, j] = q.pop(); cs.push([i, j]);
+      for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ii = i + a, jj = j + b;
+        if (ii >= 0 && jj >= 0 && ii < nx && jj < ny && weak[ii][jj] && !seen[ii][jj]) { seen[ii][jj] = true; q.push([ii, jj]); }
+      }
+    }
+    if (cs.length < 6) continue; // menos de 1,5 m²: não vale uma caixa
+    const xs = cs.map(c => P.D1 + STEP * c[0]), ys = cs.map(c => STEP * c[1]);
+    const z = { area: cs.length * STEP * STEP, x0: Math.min(...xs), x1: Math.max(...xs) + STEP, y0: Math.min(...ys), y1: Math.max(...ys) + STEP, fills: [] };
+    const n = Math.max(1, Math.round((z.y1 - z.y0) / 4)), span = (z.y1 - z.y0) / n;
+    const h = P.gal && z.x0 >= P.xm - 0.6 ? P.Hg - 0.5 : 2.5;
+    for (let k = 0; k < n; k++) {
+      const f = { x: z.x0 + 0.4, y: z.y0 + span * (k + 0.5), h };
+      const d = Math.min(...speakers(P).map(sp => Math.hypot(f.x - sp.x, f.y - sp.y, P.Sh - h)));
+      f.ms = Math.round(d / C_SOM * 1000 + 8);
+      z.fills.push(f);
+    }
+    zones.push(z);
+  }
+  zones.sort((a, b) => b.area - a.area);
+  return { zones, M };
+}
+const sideName = (z, W) => { const c = (z.y0 + z.y1) / 2; return z.y1 - z.y0 > W * 0.7 ? "na largura toda" : c < W * 0.35 ? "do lado de cima do desenho" : c > W * 0.65 ? "do lado de baixo do desenho" : "no meio"; };
+
+/* ---------- sugestão de posição das caixas ---------- */
+function scorePlan(v) {
+  const keep = state.v;
+  state.v = { ...keep, ...v };
+  try {
+    const P = geo(), xEnd = P.gal ? P.xm : P.L;
+    const lv = [];
+    for (let x = P.D1 + 0.4; x < xEnd; x += 0.7) for (let y = 0.4; y < P.W; y += 0.7) lv.push(topLevel(P, x, y));
+    const M = median(lv);
+    const inBand = lv.filter(l => Math.abs(l - M) <= 6).length / Math.max(1, lv.length);
+    let last = P.D1;
+    for (let x = P.D1; x <= P.L - 0.5; x += 0.5) if (!blocked(P, x, EAR)) last = x;
+    const diff = sideLevel(P, P.D1, EAR).L - sideLevel(P, last, EAR).L;
+    let galIn = 1;
+    if (P.gal) {
+      const pts = [];
+      for (let x = P.xm + 0.6; x <= P.L - 0.4; x += 0.5) pts.push(x);
+      const ok = pts.filter(x => !blocked(P, x, P.Hg + EAR) && offAtt(Math.atan2(P.Sh - P.Hg - EAR, x - P.Sx) / D2R - P.St, P.CovV) > -9).length;
+      galIn = pts.length ? ok / pts.length : 1;
+    }
+    const gap = P.Sx + P.Mic;
+    const sd = Math.sqrt(lv.reduce((t, l) => t + (l - M) ** 2, 0) / Math.max(1, lv.length)); // desempata: quanto mais parelho, melhor
+    const score = inBand * 100 - sd * 3 - Math.max(0, diff - 6) * 4 - Math.abs(diff) * 0.5 + galIn * 15 - Math.max(0, 1.5 - gap) * 60;
+    return { score, inBand, diff, galIn };
+  } finally { state.v = keep; }
+}
+function optimize() {
+  const v = state.v, Pn = geo();
+  const sxMin = Math.max(-Pn.Ps, 1.5 - Pn.Mic);
+  let best = null;
+  const range = (a, b, st) => { const r = []; for (let x = a; x <= b + 1e-9; x += st) r.push(+x.toFixed(2)); return r; };
+  const shs = range(2.4, Math.min(Pn.Hc - 0.5, 5.5), 0.5);
+  for (const Sx of [sxMin, sxMin + 0.5, sxMin + 1])
+    for (const Sh of shs) for (const St of range(0, 28, 4)) for (const Toe of range(0, 30, 6))
+      for (const Sw of range(1, Math.max(1, Math.min(Pn.W / 2 - 0.5, 4.5)), 0.75)) {
+        const cand = { Sx, Sh, St, Toe, Sw };
+        const r = scorePlan(cand);
+        if (!best || r.score > best.r.score) best = { cand, r };
+      }
+  return { best, before: scorePlan({}), v0: { ...v } };
+}
+$("#plOpt").addEventListener("click", () => {
+  const msg = $("#plOptMsg");
+  msg.hidden = false; msg.className = "status"; msg.textContent = "Calculando a melhor posição…";
+  setTimeout(() => {
+    const { best, before } = optimize();
+    Object.assign(state.v, best.cand);
+    state.edited = true; state.fills = true;
+    fillForm(); save(); draw();
+    const c = best.cand, pct = x => Math.round(x * 100) + "%";
+    msg.className = "status ok";
+    msg.innerHTML = `Posição sugerida aplicada: caixa a <b>${num(c.Sh, 1)} m</b> de altura, inclinada <b>${c.St}°</b>, virada <b>${c.Toe}°</b> para o centro, a <b>${num(c.Sw, 2)} m</b> da parede e <b>${num(c.Sx, 1)} m</b> à frente do palco. Lugares com volume parecido: de <b>${pct(before.inBand)}</b> para <b>${pct(best.r.inBand)}</b>. Os campos abaixo já foram atualizados; mexa neles para testar outra ideia.`;
+  }, 30);
+});
 const subs = P => state.sub === "centro"
   ? [{ x: 0.5, y: P.W / 2 - 0.35 }, { x: 0.5, y: P.W / 2 + 0.35 }]
   : [{ x: 0.5, y: P.Sw }, { x: 0.5, y: P.W - P.Sw }];
@@ -197,9 +297,11 @@ function drawTop(P, mode) {
   s += `<rect x="${X(-P.Ps)}" y="${Y(0)}" width="${P.Ps * K}" height="${P.W * K}" style="fill:#2a3238"/>`;
   // mapa de calor
   const step = 0.5, cells = [];
+  const wz = mode === "sub" ? { zones: [] } : weakZones(P);
+  const fills = state.fills ? wz.zones.flatMap(z => z.fills) : null;
   for (let x = P.D1 + step / 2; x < P.L; x += step) for (let y = step / 2; y < P.W; y += step)
-    cells.push({ x, y, L: mode === "sub" ? subLevel(P, x, y, state.f) : topLevel(P, x, y) });
-  const M = median(cells.map(c => c.L));
+    cells.push({ x, y, L: mode === "sub" ? subLevel(P, x, y, state.f) : topLevel(P, x, y, fills) });
+  const M = mode === "sub" ? median(cells.map(c => c.L)) : wz.M; // mesma régua com e sem reforço, para ver a melhora
   for (const c of cells) s += `<rect x="${X(c.x - step / 2)}" y="${Y(c.y - step / 2)}" width="${step * K + 0.6}" height="${step * K + 0.6}" style="fill:${colorOf(c.L - M)};opacity:.82"/>`;
   if (P.gal) {
     s += `<rect x="${X(P.xm)}" y="${Y(0)}" width="${P.Dg * K}" height="${P.W * K}" style="fill:none;stroke:var(--fg);stroke-width:2;stroke-dasharray:8 6"/>`;
@@ -216,12 +318,24 @@ function drawTop(P, mode) {
       s += `<g transform="translate(${X(sp.x)} ${Y(sp.y)}) rotate(${sp.ax})"><rect x="${-0.25 * K}" y="${-0.3 * K}" width="${0.5 * K}" height="${0.6 * K}" rx="3" style="fill:var(--amber)"/></g>`;
     }
   }
+  if (mode !== "sub") {
+    wz.zones.forEach((z, zi) => {
+      if (!state.fills) {
+        s += `<rect x="${X(z.x0)}" y="${Y(z.y0)}" width="${(z.x1 - z.x0) * K}" height="${(z.y1 - z.y0) * K}" style="fill:none;stroke:var(--hot);stroke-width:2;stroke-dasharray:4 4"/>`;
+        s += `<text x="${X((z.x0 + z.x1) / 2)}" y="${Y((z.y0 + z.y1) / 2) + fs / 3}" text-anchor="middle" style="fill:#fff;font:700 ${fs}px var(--f-mono);paint-order:stroke;stroke:#000;stroke-width:3px">falta som</text>`;
+      }
+      for (const f of z.fills) {
+        s += `<circle cx="${X(f.x)}" cy="${Y(f.y)}" r="${0.28 * K}" style="fill:var(--trace);stroke:#000;stroke-width:1.5"/>`;
+        s += `<text x="${X(f.x + 0.45)}" y="${Y(f.y) + fs / 3}" style="fill:var(--trace);font:700 ${fs}px var(--f-mono);paint-order:stroke;stroke:#000;stroke-width:3px">reforço · ${f.ms} ms</text>`;
+      }
+    });
+  }
   s += `<line x1="${X(-P.Mic)}" y1="${Y(P.W * 0.3)}" x2="${X(-P.Mic)}" y2="${Y(P.W * 0.7)}" style="stroke:var(--fg);stroke-width:2;stroke-dasharray:2 6"/>`;
   s += `<text x="${X(-P.Ps / 2)}" y="${Y(P.W + 0.85)}" text-anchor="middle" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">palco</text>`;
   s += `<text x="${X(P.L)}" y="${Y(P.W + 0.85)}" text-anchor="end" style="fill:var(--mute);font:600 ${fs}px var(--f-mono)">fundo · ${num(P.W, 1)} m de largura</text>`;
   s += "</svg>";
   $("#plSvgBox").innerHTML = s;
-  legend(mode === "sub" ? `<span><i style="background:var(--fg)"></i>Subs</span>` : `<span><i style="background:var(--amber)"></i>Caixas (tracejado: cobertura)</span><span>Linha pontilhada: microfones</span>`);
+  legend(mode === "sub" ? `<span><i style="background:var(--fg)"></i>Subs</span>` : `<span><i style="background:var(--amber)"></i>Caixas (tracejado: cobertura)</span><span><i style="background:var(--trace);border-radius:50%"></i>Caixa de reforço sugerida (com delay)</span><span>Contorno vermelho: falta som</span><span>Linha pontilhada: microfones</span>`);
   return { cells, M };
 }
 
@@ -294,6 +408,15 @@ function recommend(P) {
   if (weakSides > cells.length * 0.05) msg += ` As <b>laterais da frente</b> ficam fracas: vire as caixas um pouco menos para o centro.`;
   else if (weakCenter > cells.length * 0.05) msg += ` O <b>meio</b> fica fraco: vire as caixas um pouco mais para o centro.`;
   add(good > 0.85 ? "ok" : good > 0.7 ? "warn" : "bad", msg);
+
+  // 6b. zonas sem som e reforços
+  const wz = weakZones(P);
+  if (!wz.zones.length) add("ok", `Não há zona grande sem som no piso.`);
+  else {
+    const area = wz.zones.reduce((a, z) => a + z.area, 0), nf = wz.zones.reduce((a, z) => a + z.fills.length, 0);
+    const list = wz.zones.slice(0, 3).map(z => `~${Math.round(z.area)} m² ${sideName(z, P.W)}, a ${num(z.x0, 1)} a ${num(z.x1, 1)} m do palco (${z.fills.length} caixa${z.fills.length > 1 ? "s" : ""}, delay ≈ ${z.fills[0].ms} ms, a ${num(z.fills[0].h, 1)} m de altura)`).join("; ");
+    add(area > 40 ? "bad" : "warn", `Falta som em <b>${wz.zones.length} ${wz.zones.length > 1 ? "zonas" : "zona"}</b> (~${Math.round(area)} m² no total). Coloque <b>${nf} caixa${nf > 1 ? "s" : ""} de reforço</b> apontando para o fundo: ${list}. O delay faz o som da principal chegar primeiro e a voz parecer vir do palco. Marque "Ver com as caixas de reforço" para ver o resultado.`);
+  }
 
   // 7. subs
   if (state.sub === "lados") {
