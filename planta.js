@@ -25,9 +25,12 @@ const FIELDS = [
   ["caixas", "Sw", "Distância da caixa até a parede lateral (m)", 1.5, 0.1],
   ["caixas", "Toe", "Virada para o centro (°)", 10, 1],
   ["caixas", "CovH", "Cobertura horizontal da caixa (°)", 90, 5],
-  ["caixas", "CovV", "Cobertura vertical da caixa (°)", 50, 5]
+  ["caixas", "CovV", "Cobertura vertical da caixa (°)", 50, 5],
+  ["retorno", "Mn", "Quantos microfones abertos no palco", 3, 1],
+  ["retorno", "Wd", "Distância do retorno até o microfone, na frente dele (m)", 1, 0.1],
+  ["retorno", "Wo", "Quanto o retorno está desviado para o lado em relação ao microfone (m)", 0, 0.1]
 ];
-const DEF = { ...Object.fromEntries(FIELDS.map(f => [f[1], f[3]])), Gs: 0 };   // Gs: 0 = galeria lateral nos dois lados, 1 = só esquerdo, 2 = só direito (de quem olha para o palco)
+const DEF = { ...Object.fromEntries(FIELDS.map(f => [f[1], f[3]])), Gs: 0, Mp: 0 };   // Gs: 0 = galeria lateral nos dois lados, 1 = só esquerdo, 2 = só direito (de quem olha para o palco)
 
 /* ---------- campos ---------- */
 for (const [grp, id, label, , step] of FIELDS) {
@@ -44,14 +47,14 @@ const save = () => { try { localStorage.setItem("cm_planta", JSON.stringify(stat
 
 function fillForm() {
   for (const [, id] of FIELDS) $("#p_" + id).value = state.v[id];
-  $("#pGal").checked = state.gal; $("#pSub").value = state.sub; $("#pGs").value = String(state.v.Gs | 0); $("#plFill").checked = !!state.fills;
+  $("#pGal").checked = state.gal; $("#pSub").value = state.sub; $("#pGs").value = String(state.v.Gs | 0); $("#pMp").value = String(state.v.Mp | 0); $("#plFill").checked = !!state.fills;
   $("#pSubF").value = state.f; $("#oSubF").textContent = state.f + " Hz";
   $("#plExample").hidden = state.edited;
   document.querySelectorAll("#viewPl .segb").forEach(b => b.classList.toggle("on", b.dataset.pv === state.view));
 }
 function readForm() {
   for (const [, id] of FIELDS) { const v = parseFloat($("#p_" + id).value); if (isFinite(v)) state.v[id] = v; }
-  state.gal = $("#pGal").checked; state.sub = $("#pSub").value; state.v.Gs = +$("#pGs").value;
+  state.gal = $("#pGal").checked; state.sub = $("#pSub").value; state.v.Gs = +$("#pGs").value; state.v.Mp = +$("#pMp").value;
 }
 $("#viewPl").addEventListener("input", e => {
   if (e.target.id === "pSubF") { state.f = +e.target.value; $("#oSubF").textContent = state.f + " Hz"; }
@@ -419,6 +422,93 @@ function drawTop(P, mode) {
   return { cells, M };
 }
 
+/* ---------- retorno do palco ---------- */
+// resposta do microfone (amplitude) a = a0 + b0 cos(ângulo); no mundo real o fundo não passa de uns -25 dB
+const PATTERNS = [{ n: "cardioide", a: 0.5, b: 0.5, nul: 180 }, { n: "supercardioide", a: 0.37, b: 0.63, nul: 126 }, { n: "hipercardioide", a: 0.25, b: 0.75, nul: 110 }];
+const micResp = (pat, deg) => Math.max(-25, 20 * Math.log10(Math.max(1e-3, Math.abs(pat.a + pat.b * Math.cos(deg * D2R)))));
+function stageModel(P) {
+  const pat = PATTERNS[state.v.Mp | 0] || PATTERNS[0];
+  const n = Math.max(1, Math.min(8, Math.round(state.v.Mn) || 1)), Wd = Math.max(0.3, state.v.Wd), Wo = state.v.Wo || 0;
+  const mics = [], wedges = [];
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0.5 : 0.15 + 0.7 * i / (n - 1);                   // da esquerda para a direita de quem olha para o palco
+    const y = P.W * (1 - t);
+    mics.push({ x: -P.Mic, y });
+    wedges.push({ x: -P.Mic + Wd, y: y + Wo });
+  }
+  const C = (i, j) => {            // acoplamento (dB, relativo) do retorno j no microfone i
+    const dx = wedges[j].x - mics[i].x, dy = wedges[j].y - mics[i].y, d = Math.max(0.3, Math.hypot(dx, dy));
+    const phi = Math.acos(Math.max(-1, Math.min(1, -dx / d))) / D2R;     // ângulo em relação ao eixo do microfone (apontado para quem canta)
+    const psi = Math.acos(Math.max(-1, Math.min(1, dx / d))) / D2R;      // ângulo em relação ao eixo do retorno (apontado para quem canta)
+    return { c: -20 * Math.log10(d) + micResp(pat, phi) + offAtt(psi, 90), phi, r: micResp(pat, phi), d };
+  };
+  const out = mics.map((m, i) => {
+    const own = C(i, i);
+    let s = 0; for (let j = 0; j < n; j++) s += Math.pow(10, C(i, j).c / 10);
+    const penalty = 10 * Math.log10(s) - own.c;
+    const D2 = Math.hypot(Wd + 0.15, Wo, 1.25);                          // retorno no chão até o ouvido de quem canta
+    const pag = 20 * Math.log10((own.d * 0.2) / (0.15 * D2)) - 10 * Math.log10(n) - 6 - own.r - penalty;
+    return { pag, penalty, phi: own.phi, r: own.r };
+  });
+  return { pat, n, Wd, Wo, mics, wedges, out };
+}
+const pagClass = v => v >= 12 ? "ok" : v >= 6 ? "warn" : "bad";
+const pagColor = v => v >= 12 ? "var(--ok)" : v >= 6 ? "var(--amber)" : "var(--hot)";
+const dbTxt = v => (v >= 0 ? "+" : "−") + Math.abs(Math.round(v)) + " dB";
+function stageRes(P) {
+  const M = stageModel(P), ul = $("#rtRes");
+  const worst = M.out.reduce((a, o, i) => o.pag < a.pag ? { ...o, i } : a, { pag: Infinity }), avg = M.out.reduce((a, o) => a + o.pag, 0) / M.out.length;
+  const R = [];
+  const add = (lvl, html) => R.push({ lvl, html });
+  add(pagClass(worst.pag), `<b>Margem de ganho (estimada):</b> o pior microfone (nº ${worst.i + 1}) aguenta o retorno <b>${dbTxt(worst.pag)}</b> acima da voz natural antes de apitar; a média é ${dbTxt(avg)}. Acima de +12 dB é folgado, de +6 a +12 é justo e abaixo de +6 apita fácil.`);
+  const pat = M.pat;
+  const off = Math.abs(180 - worst.phi);
+  if (pat.nul < 180) {
+    const rec = Math.round(M.Wd * Math.tan((180 - pat.nul) * D2R) * 10) / 10;
+    add(Math.abs(worst.phi - pat.nul) < 15 ? "ok" : "warn", `Microfone ${pat.n}: o ponto cego fica a <b>${180 - pat.nul}°</b> para cada lado das costas dele, e não bem atrás. Ponha o retorno <b>desviado ~${num(rec, 1)} m para o lado</b> (campo "desviado para o lado") a ${num(M.Wd, 1)} m de distância, e não bem na frente.`);
+  } else if (off > 20) add("warn", `O retorno está a <b>${Math.round(off)}°</b> das costas do microfone. No cardioide o ponto cego é bem atrás (±20°). Ponha o retorno <b>na frente de quem canta, alinhado com o microfone</b> (desvio 0).`);
+  else add("ok", `O retorno está dentro do ponto cego do microfone cardioide (a ${Math.round(off)}° das costas dele). É a posição certa.`);
+  const px = M.out.reduce((a, o) => Math.max(a, o.penalty), 0);
+  if (px > 3) add("warn", `O retorno de um vizinho também chega em outro microfone (perde até <b>${Math.round(px)} dB</b> de margem). Afaste os retornos entre si, junte duas pessoas num mesmo retorno ou use fone de ouvido (in-ear).`);
+  if (M.n >= 5) add("warn", `Com <b>${M.n}</b> microfones abertos a margem cai (cada microfone aberto a mais custa cerca de 3 dB). Silencie os que não estão em uso.`);
+  add("ok", `Antes do culto, ligue os retornos e faça o <b>ensaio de microfonia</b> (aba Microfonia) com cada retorno separado; corte as frequências no EQ de cada retorno, não no geral.`);
+  const order = { bad: 0, warn: 1, ok: 2 }, TAG = { bad: "Mudar", warn: "Atenção", ok: "Ok" };
+  R.sort((a, b) => order[a.lvl] - order[b.lvl]);
+  ul.innerHTML = R.map(r => `<li class="${r.lvl}"><span class="tag">${TAG[r.lvl]}</span><span>${r.html}</span></li>`).join("");
+  return M;
+}
+function drawStage(P) {
+  const M = stageModel(P), K = 38, padx = 1, top = 0.6, depth = P.Ps + 2;
+  const W = (P.W + 2 * padx) * K, H = (depth + top + 0.4) * K, fs = Math.max(13, W / 46);
+  const X = y => ((P.W - y + padx) * K).toFixed(1), Y = x => ((x + P.Ps + top) * K).toFixed(1);
+  const T = (x, y, t, st = "") => `<text x="${X(y)}" y="${Y(x)}" text-anchor="middle" style="fill:var(--mute);font:600 ${fs}px var(--f-mono);${st}">${t}</text>`;
+  let s = `<svg viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" role="img" aria-label="Palco visto de cima com os retornos">`;
+  s += `<rect x="${X(P.W)}" y="${Y(-P.Ps)}" width="${P.W * K}" height="${P.Ps * K}" style="fill:#2a3238;stroke:var(--line);stroke-width:2"/>`;
+  s += `<rect x="${X(P.W)}" y="${Y(0)}" width="${P.W * K}" height="${1.8 * K}" style="fill:#12171a"/>`;
+  s += T(-P.Ps + 0.5, P.W / 2, "fundo do palco") + T(1.3, P.W / 2, "plateia");
+  // caixas principais
+  for (const y of [P.Sw, P.W - P.Sw]) s += `<rect x="${X(y) - 0.3 * K}" y="${Y(Math.min(P.Sx, 1.2)) - 0.3 * K}" width="${0.6 * K}" height="${0.6 * K}" rx="3" style="fill:var(--amber);opacity:.4"/>` + T(Math.min(P.Sx, 1.2) + 1.1, y, "caixa", "fill:var(--amber);opacity:.7");
+  M.mics.forEach((m, i) => {
+    const w = M.wedges[i], o = M.out[i];
+    // desenho do "alcance" do microfone (para onde ele escuta) e o ponto cego
+    const pts = [];
+    for (let a = 0; a <= 360; a += 10) { const r = Math.abs(M.pat.a + M.pat.b * Math.cos(a * D2R)) * 1.1; pts.push(`${X(m.y + r * Math.sin(a * D2R))},${Y(m.x - r * Math.cos(a * D2R))}`); }
+    s += `<polygon points="${pts.join(" ")}" style="fill:rgba(127,211,230,.13);stroke:rgba(127,211,230,.55);stroke-width:1.5"/>`;
+    for (const sg of M.pat.nul === 180 ? [0] : [-1, 1]) {
+      const a = M.pat.nul * D2R, L = 2;
+      s += `<line x1="${X(m.y)}" y1="${Y(m.x)}" x2="${X(m.y + sg * Math.sin(a) * L)}" y2="${Y(m.x - Math.cos(a) * L)}" style="stroke:var(--hot);stroke-width:1.5;stroke-dasharray:4 5;opacity:.8"/>`;
+    }
+    s += `<circle cx="${X(m.y)}" cy="${Y(m.x - 0.4)}" r="${0.26 * K}" style="fill:#e7ecea"/>`;          // quem canta
+    s += `<rect x="${X(m.y) - 0.07 * K}" y="${Y(m.x) - 0.1 * K}" width="${0.14 * K}" height="${0.2 * K}" style="fill:var(--trace)"/>`;
+    s += `<line x1="${X(m.y)}" y1="${Y(m.x)}" x2="${X(w.y)}" y2="${Y(w.x)}" style="stroke:${pagColor(o.pag)};stroke-width:1.5;stroke-dasharray:3 4"/>`;
+    s += `<g transform="translate(${X(w.y)} ${Y(w.x)})"><polygon points="${-0.45 * K},${0.22 * K} ${0.45 * K},${0.22 * K} ${0.3 * K},${-0.22 * K} ${-0.3 * K},${-0.22 * K}" style="fill:${pagColor(o.pag)};stroke:#000;stroke-width:1.5"/></g>`;
+    s += `<text x="${X(w.y)}" y="${+Y(w.x) + 0.78 * K}" text-anchor="middle" style="fill:${pagColor(o.pag)};font:700 ${fs}px var(--f-mono);paint-order:stroke;stroke:#000;stroke-width:3px">${dbTxt(o.pag)}</text>`;
+  });
+  s += "</svg>";
+  $("#plSvgBox").innerHTML = s;
+  legend(`<span><i style="background:var(--e7ecea,#e7ecea);border-radius:50%"></i>Quem canta</span><span><i style="background:var(--trace)"></i>Microfone (área azul = onde ele escuta)</span><span>Linha vermelha tracejada = ponto cego do microfone</span><span><i style="background:var(--ok)"></i>Retorno: margem folgada <i style="background:var(--amber);margin-left:8px"></i>justa <i style="background:var(--hot);margin-left:8px"></i>apita fácil</span>`);
+}
+
 /* ---------- recomendações ---------- */
 function recommend(P) {
   const R = [];
@@ -529,8 +619,9 @@ function draw() {
   window.CM.onDraw && window.CM.onDraw();
   const P = geo();
   $("#plFreqRow").hidden = state.view !== "sub";
-  if (state.view === "side") drawSide(P); else drawTop(P, state.view === "sub" ? "sub" : "top");
+  if (state.view === "side") drawSide(P); else if (state.view === "stage") drawStage(P); else drawTop(P, state.view === "sub" ? "sub" : "top");
   recommend(P);
+  stageRes(P);
 }
 window.addEventListener("resize", draw); // a aba chama resize quando aparece
 fillForm();
