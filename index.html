@@ -552,6 +552,7 @@ ol.tips.small{font-size:14px;margin-top:12px}
             <button class="segb on" data-pv="side">De lado</button>
             <button class="segb" data-pv="top">De cima · voz</button>
             <button class="segb" data-pv="sub">De cima · grave</button>
+            <button class="segb" data-pv="stage">Palco · retorno</button>
           </div>
           <div class="plBox" id="plSvgBox"></div>
           <div class="plLegend" id="plLegend"></div>
@@ -650,6 +651,15 @@ ol.tips.small{font-size:14px;margin-top:12px}
             <select id="pGs"><option value="0">Nos dois lados</option><option value="1">Só no lado esquerdo (de quem olha para o palco)</option><option value="2">Só no lado direito (de quem olha para o palco)</option></select></label></div>
         </section>
         <section class="panel"><span class="label">Caixas principais (uma de cada lado)</span><div class="fields" id="plF_caixas"></div></section>
+        <section class="panel" id="rtPanel">
+          <span class="label">Retorno do palco (caixas de retorno)</span>
+          <p class="hint" style="margin-top:8px">Cada pessoa com microfone ganha um retorno na frente dela. O app estima <b>quanto o retorno pode subir antes de apitar</b> e mostra na aba <b>Palco · retorno</b>. O melhor lugar é nas costas do microfone, onde ele "não escuta".</p>
+          <div class="fields" id="plF_retorno"></div>
+          <div class="fields"><label class="fld" for="pMp"><span>Tipo de microfone</span>
+            <select id="pMp"><option value="0">Cardioide (SM58 e parecidos)</option><option value="1">Supercardioide</option><option value="2">Hipercardioide</option></select></label></div>
+          <ul class="recs" id="rtRes"></ul>
+          <p class="note">Estimativa simples (ganho acústico potencial, com margem de 6 dB). Confirme no ensaio de microfonia, com os retornos ligados.</p>
+        </section>
         <section class="panel">
           <span class="label">Subwoofers</span>
           <div class="fields">
