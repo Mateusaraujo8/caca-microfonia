@@ -60,6 +60,14 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 .meta{display:flex;gap:8px;flex-wrap:wrap}
 .chip{font:500 13px/1 var(--f-mono);border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:var(--panel-2)}
 .chip b{color:var(--amber);font-weight:600}
+.bandPick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:6px 0 2px}
+.bandPick div{border:1px solid var(--line);border-radius:8px;padding:8px 6px;text-align:center;background:var(--panel-2);opacity:.45}
+.bandPick b{display:block;font:700 18px/1.1 var(--f-display);letter-spacing:.06em}
+.bandPick span{font:500 12px/1.3 var(--f-mono);color:var(--mute)}
+.bandPick div.on{opacity:1;border-color:var(--hot)}
+.bandPick div.on b{color:var(--hot)}
+.bandPick div.main{background:var(--hot);border-color:var(--hot);opacity:1}
+.bandPick div.main b,.bandPick div.main span{color:#1f0705}
 .advice{margin:4px 0 0;color:var(--fg);max-width:62ch}
 .advice small{color:var(--mute)}
 
@@ -169,6 +177,14 @@ ol.tips.small{font-size:14px;margin-top:12px}
 .chip.locked{border-color:var(--ok);color:var(--ok)}
 
 /* planta */
+#pfStep{min-height:5.6em}
+#pfBox.big{display:block;overflow:auto;max-height:75vh}
+#pfBox.big #pfCv{width:260%;max-width:none;touch-action:pan-x pan-y}
+#pfCv{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair;border-radius:6px}
+.pfb{flex:1;background:var(--panel-2);border:0;border-right:1px solid var(--line);padding:10px 6px;font-weight:600;cursor:pointer;min-height:44px;color:var(--fg)}
+.pfb:last-child{border-right:0}
+.pfb.on{background:var(--fg);color:var(--bg)}
+.planSel{background:var(--panel-2);border:1px solid var(--amber);border-radius:6px;color:var(--amber);font-weight:600;min-height:34px;padding:4px 6px;max-width:150px}
 .plBox{background:#0a0d0e;border-radius:6px;overflow:hidden}
 .plBox svg{display:block;width:100%;height:auto}
 .plLegend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--mute);margin-top:10px}
@@ -231,6 +247,11 @@ ol.tips.small{font-size:14px;margin-top:12px}
         <span class="label" id="alertLabel">Como usar</span>
         <div class="big" id="alertFreq">Pronto</div>
         <div class="meta" id="alertMeta"></div>
+        <div class="bandPick" id="bandPick" hidden>
+          <div data-z="grave"><b>GRAVE</b><span>botão LOW</span></div>
+          <div data-z="medio"><b>MÉDIO</b><span>botão MID</span></div>
+          <div data-z="agudo"><b>AGUDO</b><span>botão HIGH</span></div>
+        </div>
         <p class="advice" id="alertAdvice">Toque em <b>Ligar microfone</b> e deixe o celular perto da mesa ou no meio da igreja, apontado para as caixas. Quando aparecer um apito, o app mostra a frequência e qual botão da mesa mexer. Para ver como funciona sem fazer barulho, toque em <b>Demonstração</b>.</p>
       </section>
 
@@ -333,6 +354,16 @@ ol.tips.small{font-size:14px;margin-top:12px}
           </div>
           <p class="note">O jeito mais fácil e preciso é o <b>marcador impresso</b>: cole a folha na parede ou na caixa e tire a foto. O app acha o marcador sozinho e ainda corrige foto tirada um pouco de lado. <a href="marcador.html" target="_blank" rel="noopener">Abrir folha para imprimir</a>.</p>
           <p class="note">A medida só fica certa para coisas na mesma parede ou mesma distância da referência.</p>
+          <details>
+            <summary>Montar a planta só com fotos (sem digitar)</summary>
+            <ol class="tips">
+              <li><b>Foto de lado da frente da igreja</b> (palco e parede da frente, com o marcador colado na parede ou no palco): meça a <b>altura do teto</b> e a <b>altura do palco</b>. Em cada medida, escolha em <b>→ Planta…</b> o que ela é.</li>
+              <li><b>Foto do palco de frente, com o marcador no chão do palco ou na frente dele</b>: meça a <b>largura da nave</b> (de parede a parede) e a <b>profundidade do palco</b>.</li>
+              <li><b>Foto da galeria</b> (a mureta e o piso, marcador na mureta): meça a <b>altura do piso da galeria</b> e a <b>altura da mureta</b>.</li>
+              <li><b>Foto da caixa</b> (marcador na parede ao lado dela): meça a <b>altura da caixa</b> e a <b>distância até a parede lateral</b>.</li>
+              <li><b>Comprimento da igreja</b> e <b>distância até a 1ª fileira</b> não cabem numa foto só (é profundidade). Use a <b>medição AR</b> ou o <b>contador de passos</b> logo abaixo e envie com o mesmo seletor <b>→ Planta…</b>.</li>
+            </ol>
+          </details>
         </section>
 
         <section class="panel">
@@ -470,6 +501,11 @@ ol.tips.small{font-size:14px;margin-top:12px}
           </div>
           <div class="plBox" id="plSvgBox"></div>
           <div class="plLegend" id="plLegend"></div>
+          <div class="refRow" style="margin-top:10px;flex-wrap:wrap">
+            <button class="btn small primary" id="plOpt">Sugerir melhor posição das caixas</button>
+            <label class="check" for="plFill"><input type="checkbox" id="plFill"> Ver com as caixas de reforço sugeridas</label>
+          </div>
+          <p class="status" id="plOptMsg" hidden></p>
           <div class="refRow" id="plFreqRow" hidden>
             <label for="pSubF">Frequência do grave</label>
             <input type="range" id="pSubF" min="40" max="120" step="1" value="63">
@@ -483,6 +519,35 @@ ol.tips.small{font-size:14px;margin-top:12px}
         </section>
       </div>
       <div class="col">
+        <section class="panel" id="pfPanel">
+          <span class="label">Montar a planta por foto · aproximado</span>
+          <p class="hint" style="margin-top:8px">Uma foto só, sem digitar medidas. Você toca nos pontos que o app pede e ele calcula pela perspectiva. Erro esperado de uns 10 a 20%: use para ter um ponto de partida e corrija nos campos abaixo.</p>
+          <div class="seg" role="group" aria-label="Tipo de foto">
+            <button class="pfb on" data-pfm="A">Do fundo para o palco</button>
+            <button class="pfb" data-pfm="B">Do palco para o fundo</button>
+          </div>
+          <p class="hint" id="pfHint"></p>
+          <div class="refRow"><label for="pfH">Altura da câmera</label><input type="number" id="pfH" step="0.05" min="0.5" max="2.5" value="1.4"><span>m (do chão onde você está)</span></div>
+          <div class="refRow"><label for="pfD" id="pfDl"></label><input type="number" id="pfD" step="0.1" min="0" value="0"><span>m</span></div>
+          <div class="refRow"><label for="pfLens">Zoom</label>
+            <select id="pfLens"><option value="auto">Automático (lido da foto)</option><option value="13">0,5x (ultra-angular)</option><option value="26">1x (normal)</option><option value="52">2x</option></select></div>
+          <div class="controls" style="margin:10px 0">
+            <label class="btn small primary" for="pfCam">Tirar foto</label>
+            <input type="file" id="pfCam" accept="image/*" capture="environment" hidden>
+            <label class="btn small" for="pfGal">Galeria</label>
+            <input type="file" id="pfGal" accept="image/*" hidden>
+            <button class="btn small" id="pfEx">Usar exemplo</button>
+          </div>
+          <p class="status" id="pfStep" hidden></p>
+          <div class="photoBox" id="pfBox"><canvas id="pfCv" hidden aria-label="Foto da igreja para marcar pontos"></canvas><div class="photoEmpty" id="pfEmpty">Tire ou escolha uma foto. Para ver como funciona, toque em <b>Usar exemplo</b>.</div></div>
+          <div class="controls" style="margin-top:8px">
+            <button class="btn small" id="pfUndo" disabled>Desfazer ponto</button>
+            <button class="btn small" id="pfZoom">Ampliar foto</button>
+            <button class="btn small" id="pfClear" disabled>Recomeçar</button>
+          </div>
+          <ul class="recs" id="pfRes"></ul>
+          <button class="btn primary" id="pfApply" hidden style="margin-top:10px">Aplicar na planta</button>
+        </section>
         <section class="panel"><span class="label">Igreja</span><div class="fields" id="plF_igreja"></div></section>
         <section class="panel">
           <span class="label">Galeria</span>
@@ -553,10 +618,24 @@ function noteOf(f) {
   const i = ((m % 12) + 12) % 12, oct = Math.floor(m / 12) - 1;
   return NOTES_PT[i] + " (" + NOTES[i] + oct + ")";
 }
+const ZONES = [
+  { k: "grave", name: "Grave", from: 20, max: 250 },
+  { k: "medio", name: "Médio", from: 250, max: 5000 },
+  { k: "agudo", name: "Agudo", from: 5000, max: Infinity }
+];
+const zoneOf = f => ZONES.find(z => f < z.max);
+function regionOf(f) {
+  if (f < 100) return "sub-grave";
+  if (f < 250) return "grave (corpo)";
+  if (f < 800) return "médio-grave (embolado)";
+  if (f < 2500) return "médio (voz)";
+  if (f < 5000) return "médio-agudo (presença)";
+  return "agudo (brilho)";
+}
 function adviceFor(f) {
   const band = fmtBand(nearestBand(f));
-  if (f < 200) return `Região grave (som embolado/ronco). Ligue o <b>LOW CUT</b> do microfone e abaixe o <b>LOW</b> do canal. No EQ gráfico, corte a banda <b>${band}</b> uns 3 a 6 dB.`;
-  if (f < 6000) return `Região média. Se o canal tiver <b>MID ajustável</b>, gire a frequência para <b>${fmtHz(f)}</b> e corte o MID 3 a 6 dB. No EQ gráfico, abaixe a banda <b>${band}</b>.`;
+  if (f < 250) return `Região grave (som embolado/ronco). Ligue o <b>LOW CUT</b> do microfone e abaixe o <b>LOW</b> do canal. No EQ gráfico, corte a banda <b>${band}</b> uns 3 a 6 dB.`;
+  if (f < 5000) return `Região média. Se o canal tiver <b>MID ajustável</b>, gire a frequência para <b>${fmtHz(f)}</b> e corte o MID 3 a 6 dB. No EQ gráfico, abaixe a banda <b>${band}</b>.`;
   return `Agudo (apito fino). Abaixe o <b>HIGH</b> do canal ou, no EQ gráfico, a banda <b>${band}</b> uns 3 a 6 dB.`;
 }
 function aWeight(f) {
@@ -804,6 +883,13 @@ const yOf = db => (H - PAD_B * dpr) * (1 - (db - DB0) / (DB1 - DB0));
 
 function grid() {
   g.fillStyle = "#0a0d0e"; g.fillRect(0, 0, W, H);
+  const ph = H - PAD_B * dpr;
+  g.font = `600 ${10 * dpr}px ${css("--f-mono")}`; g.textAlign = "center"; g.textBaseline = "alphabetic";
+  ZONES.forEach((z, i) => {
+    const xa = xOf(z.from), xb = Math.min(W, z.max === Infinity ? W : xOf(z.max));
+    g.fillStyle = i === 1 ? "rgba(255,255,255,.035)" : "rgba(255,255,255,.012)"; g.fillRect(xa, 0, xb - xa, ph);
+    g.fillStyle = "#4d5a58"; g.fillText(z.name.toUpperCase(), (xa + xb) / 2, ph - 6 * dpr);
+  });
   g.lineWidth = 1; g.font = `${10 * dpr}px ${css("--f-mono")}`;
   g.strokeStyle = C.line; g.fillStyle = C.mute;
   g.textAlign = "right"; g.textBaseline = "middle";
@@ -872,6 +958,7 @@ function idleAlert() {
   $("#alertFreq").textContent = "Pronto";
   $("#alertMeta").textContent = "";
   $("#alertAdvice").innerHTML = "Toque em <b>Ligar microfone</b> para voltar a monitorar.";
+  $("#bandPick").hidden = true; shownKey = "";
   $("#spl").textContent = "--";
   $("#barMask").style.width = "100%";
   drawIdle();
@@ -886,17 +973,23 @@ function updateAlert() {
     $("#alert").className = "panel hot";
     $("#alertLabel").textContent = hot.length > 1 ? `Microfonia agora · ${hot.length} frequências` : "Microfonia agora";
     $("#alertFreq").textContent = fmtHz(t.f);
-    const key = band + "|" + hot.length;
+    const zs = [...new Set(hot.map(h => zoneOf(h.f).k))];
+    const mainZ = zoneOf(t.f).k;
+    const bp = $("#bandPick");
+    bp.hidden = false;
+    for (const d of bp.children) d.className = d.dataset.z === mainZ ? "main" : zs.includes(d.dataset.z) ? "on" : "";
+    const key = band + "|" + hot.length + "|" + zs.join();
     if (key !== shownKey) {
       shownKey = key;
       const extra = hot.slice(1, 3).map(h => fmtHz(h.f)).join(", ");
-      $("#alertMeta").innerHTML = `<span class="chip">EQ gráfico <b>${fmtBand(band)}</b></span><span class="chip">Nota <b>${noteOf(t.f)}</b></span>` + (extra ? `<span class="chip">Também: <b>${extra}</b></span>` : "");
+      $("#alertMeta").innerHTML = `<span class="chip">EQ gráfico <b>${fmtBand(band)}</b></span><span class="chip">Região <b>${regionOf(t.f)}</b></span><span class="chip">Nota <b>${noteOf(t.f)}</b></span>` + (extra ? `<span class="chip">Também: <b>${extra}</b></span>` : "");
       $("#alertAdvice").innerHTML = adviceFor(t.f) + `<br><small>Se não resolver: baixe o ganho do microfone ou afaste ele da caixa/retorno.</small>`;
     }
   } else {
     lamp.className = "lamp on";
     if (shownKey !== "calm") {
       shownKey = "calm";
+      $("#bandPick").hidden = true;
       $("#alert").className = "panel calm";
       $("#alertLabel").textContent = demo ? "Demonstração · aguarde o apito" : "Monitorando";
       $("#alertFreq").textContent = "Sem microfonia";
@@ -945,5 +1038,6 @@ if ("serviceWorker" in navigator && location.protocol === "https:") navigator.se
 <script src="medir.js"></script>
 <script src="caixas.js"></script>
 <script src="planta.js"></script>
+<script src="planta-foto.js"></script>
 </body>
 </html>

@@ -214,6 +214,8 @@ document.querySelectorAll("[data-ar-to]").forEach(b => b.addEventListener("click
 /* ================= Contador de passos (acelerômetro) ================= */
 let pedOn = false, pedCal = false, steps = 0, fast = 9.8, slow = 9.8, armed = true, lastStep = 0, gotMotion = false;
 try { const v = parseFloat(localStorage.getItem("cm_stepLen")); if (v > 0.3 && v < 1.3) $("#pedLen").value = v.toFixed(2); } catch (e) {}
+document.querySelector("#arResult .controls").append(window.CM.planSelect(() => lastAR));
+document.querySelector("#pedResult").append(window.CM.planSelect(() => steps * stepLen()));
 const stepLen = () => { const v = parseFloat($("#pedLen").value); return v > 0 ? v : 0.75; };
 function pedShow() {
   $("#pedVal").textContent = num(steps * stepLen(), 1) + " m";
