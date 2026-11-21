@@ -60,6 +60,26 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 .meta{display:flex;gap:8px;flex-wrap:wrap}
 .chip{font:500 13px/1 var(--f-mono);border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:var(--panel-2)}
 .chip b{color:var(--amber);font-weight:600}
+.culto{position:fixed;inset:0;z-index:70;background:#05080a;color:#fff;display:flex;flex-direction:column;padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.culto.hot{background:#6b0f08;animation:cultoFlash .7s ease-in-out infinite alternate}
+@keyframes cultoFlash{from{background:#6b0f08}to{background:#b3180d}}
+.cultoTop{display:flex;align-items:center;gap:10px;font:600 clamp(14px,3.2vmin,22px)/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.culto.hot .cultoTop{color:#ffd9d4}
+.cultoSpl{margin-left:auto;margin-right:84px;font-variant-numeric:tabular-nums}
+.cultoSpl b{font-size:1.5em;color:#fff}
+.cultoX{position:absolute;right:14px;top:calc(10px + env(safe-area-inset-top,0px));min-height:44px;min-width:68px}
+.cultoMain{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:clamp(6px,2vmin,18px);min-height:0}
+.cultoZone{font:800 clamp(48px,22vmin,220px)/.95 var(--f-display);letter-spacing:.02em;color:var(--ok)}
+.culto.hot .cultoZone{color:#fff}
+.cultoFreq{font:700 clamp(30px,11vmin,110px)/1 var(--f-display);font-variant-numeric:tabular-nums}
+.cultoAct{font:600 clamp(18px,5vmin,44px)/1.2 var(--f-body);color:var(--amber)}
+.culto.hot .cultoAct{color:#fff}
+.cultoMore{font-size:clamp(14px,3.4vmin,26px);color:var(--mute)}
+.culto.hot .cultoMore{color:#ffd9d4}
+.cultoBands{max-width:640px;width:100%;margin:0 auto}
+.cultoBands b{font-size:clamp(14px,3.6vmin,26px)}
+.cultoBands span{font-size:clamp(11px,2.6vmin,18px)}
+@media (prefers-reduced-motion:reduce){.culto.hot{animation:none}}
 #ringList{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
 #ringList li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center;background:var(--panel-2);border-radius:8px;padding:10px 12px;border-left:4px solid var(--amber)}
 #ringList li.done{border-left-color:var(--ok);opacity:.8}
@@ -255,6 +275,7 @@ ol.tips.small{font-size:14px;margin-top:12px}
     <div class="controls">
       <button class="btn primary" id="btnStart">Ligar microfone</button>
       <button class="btn" id="btnDemo">Demonstração</button>
+      <button class="btn" id="btnCulto">Modo culto</button>
     </div>
   </header>
 
@@ -664,6 +685,22 @@ ol.tips.small{font-size:14px;margin-top:12px}
     </div>
   </div>
 
+  <div id="cultoOverlay" class="culto" hidden role="dialog" aria-label="Modo culto">
+    <button class="btn cultoX" id="cultoExit">Sair</button>
+    <div class="cultoTop"><span class="lamp on" id="cultoLamp"></span><span id="cultoState">Monitorando</span><span class="cultoSpl"><b id="cultoSpl">--</b> dB(A)</span></div>
+    <div class="cultoMain" aria-live="assertive">
+      <div class="cultoZone" id="cultoZone">TUDO CERTO</div>
+      <div class="cultoFreq" id="cultoFreq"></div>
+      <div class="cultoAct" id="cultoAct"></div>
+      <div class="cultoMore" id="cultoMore"></div>
+    </div>
+    <div class="bandPick cultoBands" id="cultoBands">
+      <div data-z="grave"><b>GRAVE</b><span>botão LOW</span></div>
+      <div data-z="medio"><b>MÉDIO</b><span>botão MID</span></div>
+      <div data-z="agudo"><b>AGUDO</b><span>botão HIGH</span></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status" hidden></div>
 
   <footer>Funciona melhor com o celular fora do bolso, sem capinha cobrindo o microfone e com a tela ligada.</footer>
@@ -886,6 +923,7 @@ async function start(useDemo) {
 
 function stop() {
   running = false; ringOn = false; if (typeof renderRing === "function") renderRing();
+  if (typeof cultoClose === "function") cultoClose();
   if (demo) { demo.stop(); demo = null; }
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   if (ctx) { ctx.close().catch(() => {}); ctx = null; }
@@ -1159,8 +1197,52 @@ function updateAlert() {
     }
   }
 }
+/* ---------- modo culto: tela cheia, só o essencial. Sem som de alerta (o bip entraria no microfone e viraria "microfonia") ---------- */
+let culto = false, cultoLast = null, cultoKey = "";
+const KNOB = { grave: "LOW", medio: "MID", agudo: "HIGH" };
+async function cultoOpen() {
+  if (!running) await start(false);
+  if (!running) return;
+  culto = true; cultoKey = ""; $("#cultoOverlay").hidden = false;
+  renderCulto([]);
+}
+function cultoClose() { culto = false; const o = $("#cultoOverlay"); if (o) o.hidden = true; }
+function renderCulto(hot) {
+  const o = $("#cultoOverlay"), now = Date.now();
+  o.classList.toggle("hot", hot.length > 0);
+  const zs = [...new Set(hot.map(h => zoneOf(h.f).k))];
+  let main = null;
+  if (hot.length) {
+    const t = hot[0], z = zoneOf(t.f), band = nearestBand(t.f), item = ring.find(r => r.band === band);
+    const cut = item ? Math.min(9, item.done ? item.cut + 3 : item.cut) : 3;
+    main = z.k; cultoLast = { f: t.f, z: z.name, t: now };
+    $("#cultoState").textContent = "Microfonia agora";
+    $("#cultoZone").textContent = z.name.toUpperCase();
+    $("#cultoFreq").textContent = fmtHz(t.f);
+    $("#cultoAct").textContent = `EQ gráfico ${fmtBand(band)}: −${cut} dB`;
+    const extra = hot.slice(1, 3).map(h => fmtHz(h.f)).join(", ");
+    $("#cultoMore").textContent = `Canal: botão ${KNOB[z.k]} · gire para ${fmtHz(t.f)}` + (extra ? ` · também: ${extra}` : "");
+    const key = band + "|" + hot.length;
+    if (key !== cultoKey) { cultoKey = key; try { navigator.vibrate && navigator.vibrate([250, 120, 250, 120, 250]); } catch (e) {} }
+  } else {
+    cultoKey = "";
+    $("#cultoState").textContent = "Monitorando";
+    $("#cultoZone").textContent = "TUDO CERTO";
+    $("#cultoFreq").textContent = "";
+    $("#cultoAct").textContent = "";
+    $("#cultoMore").textContent = cultoLast && now - cultoLast.t < 20000
+      ? `Última microfonia: ${fmtHz(cultoLast.f)} (${cultoLast.z}), há ${Math.round((now - cultoLast.t) / 1000)} s`
+      : "Sem microfonia";
+  }
+  for (const d of $("#cultoBands").children) d.className = d.dataset.z === main ? "main" : zs.includes(d.dataset.z) ? "on" : "";
+}
+$("#btnCulto").addEventListener("click", cultoOpen);
+$("#cultoExit").addEventListener("click", cultoClose);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && culto) cultoClose(); });
+
 function updateMeter(L, now) {
   const show = v => isFinite(v) ? v.toFixed(0) : "--";
+  if (culto) $("#cultoSpl").textContent = show(L);
   $("#spl").textContent = show(L);
   const pct = v => Math.max(0, Math.min(100, (v - 60) / 50 * 100));
   $("#barMask").style.width = (100 - pct(L)) + "%";
@@ -1184,7 +1266,7 @@ function loop(now) {
   const L = levels(now);
   if (measBuf) measBuf.push(L);
   draw();
-  if (now - lastUi > 120) { lastUi = now; updateAlert(); updateMeter(L, now); }
+  if (now - lastUi > 120) { lastUi = now; updateAlert(); updateMeter(L, now); if (culto) renderCulto(tracks.filter(t => t.flagged).sort((a, b) => b.v - a.v)); }
   requestAnimationFrame(loop);
 }
 
