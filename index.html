@@ -177,6 +177,13 @@ ol.tips.small{font-size:14px;margin-top:12px}
 .chip.locked{border-color:var(--ok);color:var(--ok)}
 
 /* planta */
+#pfStep{min-height:5.6em}
+#pfBox.big{display:block;overflow:auto;max-height:75vh}
+#pfBox.big #pfCv{width:260%;max-width:none;touch-action:pan-x pan-y}
+#pfCv{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair;border-radius:6px}
+.pfb{flex:1;background:var(--panel-2);border:0;border-right:1px solid var(--line);padding:10px 6px;font-weight:600;cursor:pointer;min-height:44px;color:var(--fg)}
+.pfb:last-child{border-right:0}
+.pfb.on{background:var(--fg);color:var(--bg)}
 .planSel{background:var(--panel-2);border:1px solid var(--amber);border-radius:6px;color:var(--amber);font-weight:600;min-height:34px;padding:4px 6px;max-width:150px}
 .plBox{background:#0a0d0e;border-radius:6px;overflow:hidden}
 .plBox svg{display:block;width:100%;height:auto}
@@ -512,6 +519,35 @@ ol.tips.small{font-size:14px;margin-top:12px}
         </section>
       </div>
       <div class="col">
+        <section class="panel" id="pfPanel">
+          <span class="label">Montar a planta por foto · aproximado</span>
+          <p class="hint" style="margin-top:8px">Uma foto só, sem digitar medidas. Você toca nos pontos que o app pede e ele calcula pela perspectiva. Erro esperado de uns 10 a 20%: use para ter um ponto de partida e corrija nos campos abaixo.</p>
+          <div class="seg" role="group" aria-label="Tipo de foto">
+            <button class="pfb on" data-pfm="A">Do fundo para o palco</button>
+            <button class="pfb" data-pfm="B">Do palco para o fundo</button>
+          </div>
+          <p class="hint" id="pfHint"></p>
+          <div class="refRow"><label for="pfH">Altura da câmera</label><input type="number" id="pfH" step="0.05" min="0.5" max="2.5" value="1.4"><span>m (do chão onde você está)</span></div>
+          <div class="refRow"><label for="pfD" id="pfDl"></label><input type="number" id="pfD" step="0.1" min="0" value="0"><span>m</span></div>
+          <div class="refRow"><label for="pfLens">Zoom</label>
+            <select id="pfLens"><option value="auto">Automático (lido da foto)</option><option value="13">0,5x (ultra-angular)</option><option value="26">1x (normal)</option><option value="52">2x</option></select></div>
+          <div class="controls" style="margin:10px 0">
+            <label class="btn small primary" for="pfCam">Tirar foto</label>
+            <input type="file" id="pfCam" accept="image/*" capture="environment" hidden>
+            <label class="btn small" for="pfGal">Galeria</label>
+            <input type="file" id="pfGal" accept="image/*" hidden>
+            <button class="btn small" id="pfEx">Usar exemplo</button>
+          </div>
+          <p class="status" id="pfStep" hidden></p>
+          <div class="photoBox" id="pfBox"><canvas id="pfCv" hidden aria-label="Foto da igreja para marcar pontos"></canvas><div class="photoEmpty" id="pfEmpty">Tire ou escolha uma foto. Para ver como funciona, toque em <b>Usar exemplo</b>.</div></div>
+          <div class="controls" style="margin-top:8px">
+            <button class="btn small" id="pfUndo" disabled>Desfazer ponto</button>
+            <button class="btn small" id="pfZoom">Ampliar foto</button>
+            <button class="btn small" id="pfClear" disabled>Recomeçar</button>
+          </div>
+          <ul class="recs" id="pfRes"></ul>
+          <button class="btn primary" id="pfApply" hidden style="margin-top:10px">Aplicar na planta</button>
+        </section>
         <section class="panel"><span class="label">Igreja</span><div class="fields" id="plF_igreja"></div></section>
         <section class="panel">
           <span class="label">Galeria</span>
@@ -1002,5 +1038,6 @@ if ("serviceWorker" in navigator && location.protocol === "https:") navigator.se
 <script src="medir.js"></script>
 <script src="caixas.js"></script>
 <script src="planta.js"></script>
+<script src="planta-foto.js"></script>
 </body>
 </html>

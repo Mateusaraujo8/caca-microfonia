@@ -448,5 +448,6 @@ window.CM.setPlan = (id, v) => {
   state.edited = true;
   fillForm(); save(); draw();
 };
+window.CM.setPlanGal = on => { state.gal = !!on; state.edited = true; fillForm(); save(); draw(); };
 window.CM.planta = { geo, sideLevel, topLevel, subLevel, blocked, state: () => state };
 })();
