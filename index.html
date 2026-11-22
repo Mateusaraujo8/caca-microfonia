@@ -80,6 +80,8 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 .cultoBands b{font-size:clamp(14px,3.6vmin,26px)}
 .cultoBands span{font-size:clamp(11px,2.6vmin,18px)}
 @media (prefers-reduced-motion:reduce){.culto.hot{animation:none}}
+.calStep{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
+.calStep .note{margin:4px 0 8px}
 #ringList{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
 #ringList li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center;background:var(--panel-2);border-radius:8px;padding:10px 12px;border-left:4px solid var(--amber)}
 #ringList li.done{border-left-color:var(--ok);opacity:.8}
@@ -307,6 +309,27 @@ ol.tips.small{font-size:14px;margin-top:12px}
           <div class="legend"><span><i style="background:var(--trace)"></i>Som agora</span><span><i style="background:var(--mute)"></i>Pico</span><span><i style="background:var(--hot)"></i>Microfonia</span></div>
         </div>
         <canvas id="spec" aria-label="Gráfico de frequências captadas pelo microfone"></canvas>
+      </section>
+
+      <section class="panel" id="calPanel">
+        <span class="label">Calibrar o áudio</span>
+        <p class="hint" style="margin-top:8px">Faça uma vez, no lugar onde o celular fica durante o culto. Deixa a detecção de microfonia e o medidor de dB mais certos. Se o celular pedir, permita o microfone.</p>
+        <p class="status" id="calInfo" hidden></p>
+        <div class="calStep"><b>1. Nível de entrada</b>
+          <p class="note">Fale ou toque o som no volume normal de culto e toque em Verificar. O app diz se o som está estourando ou fraco demais.</p>
+          <button class="btn small" id="calLevel">Verificar nível (5 s)</button>
+          <p class="status" id="calLevelOut" hidden></p></div>
+        <div class="calStep"><b>2. Ruído de fundo</b>
+          <p class="note">Com a igreja calma, o som ligado e ninguém falando, toque em Medir. O app ajusta sozinho a sensibilidade para ignorar o ruído.</p>
+          <button class="btn small" id="calNoise">Medir ruído de fundo (5 s)</button>
+          <p class="status" id="calNoiseOut" hidden></p></div>
+        <div class="calStep"><b>3. Medidor de dB (opcional)</b>
+          <p class="note">Precisa de um decibelímetro de verdade, ou de um segundo celular com app de decibelímetro, ao lado deste, com um ruído estável tocando. Toque em Medir e digite o que o outro aparelho mostra.</p>
+          <button class="btn small" id="calMeter">Medir (5 s)</button>
+          <div class="refRow" id="calRefRow" hidden><label for="calRef">Valor do decibelímetro</label><input type="number" id="calRef" step="0.5"><span>dB</span><button class="btn small primary" id="calApply">Aplicar</button></div>
+          <p class="status" id="calMeterOut" hidden></p></div>
+        <p class="note" id="calSaved"></p>
+        <button class="btn small" id="calReset">Voltar ao padrão</button>
       </section>
 
       <section class="panel" id="ringPanel">
@@ -891,7 +914,7 @@ let ctx = null, analyser = null, stream = null, demo = null, running = false, wa
 let spec, peak, timeBuf, prefix, aw, binHz, nBins;
 let tracks = [];
 let splMax = -Infinity, leqBuf = [], lastLeqPush = 0;
-let measBuf = null;
+let measBuf = null, calAcc = null, micInfo = null;
 
 async function start(useDemo) {
   stop();
@@ -908,6 +931,7 @@ async function start(useDemo) {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("insecure");
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       ctx.createMediaStreamSource(stream).connect(analyser);
+      try { const tr = stream.getAudioTracks()[0]; micInfo = { label: tr.label || "", s: tr.getSettings ? tr.getSettings() : {} }; } catch (e) { micInfo = null; }
     }
   } catch (err) {
     stop();
@@ -924,6 +948,7 @@ async function start(useDemo) {
   for (let i = 0; i < nBins; i++) aw[i] = aWeight(i * binHz);
   tracks = []; leqBuf = []; splMax = -Infinity;
   running = true;
+  if (typeof renderCalInfo === "function") renderCalInfo();
   setButtons(useDemo);
   layoutCanvas();
   try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
@@ -932,7 +957,8 @@ async function start(useDemo) {
 }
 
 function stop() {
-  running = false; ringOn = false; if (typeof renderRing === "function") renderRing();
+  running = false; ringOn = false; micInfo = null; if (typeof renderRing === "function") renderRing();
+  if (typeof renderCalInfo === "function") renderCalInfo();
   if (typeof cultoClose === "function") cultoClose();
   if (demo) { demo.stop(); demo = null; }
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
@@ -1275,10 +1301,106 @@ function loop(now) {
   detect(dt);
   const L = levels(now);
   if (measBuf) measBuf.push(L);
+  if (calAcc) calCollect(L);
   draw();
   if (now - lastUi > 120) { lastUi = now; updateAlert(); updateMeter(L, now); if (culto) renderCulto(tracks.filter(t => t.flagged).sort((a, b) => b.v - a.v)); }
   requestAnimationFrame(loop);
 }
+
+/* ---------- calibrar o áudio ---------- */
+let calInfo = {};
+try { calInfo = JSON.parse(localStorage.getItem("cm_calinfo") || "{}"); } catch (e) {}
+const saveCalInfo = () => { try { localStorage.setItem("cm_calinfo", JSON.stringify(calInfo)); } catch (e) {} };
+function calCollect(L) {
+  const lo = Math.max(3, Math.ceil(70 / binHz)), hi = Math.min(nBins - 4, Math.floor(14000 / binHz));
+  let mx = -200; for (let i = lo; i <= hi; i++) if (spec[i] > mx) mx = spec[i];
+  let pk = 0, sq = 0;
+  for (let i = 0; i < timeBuf.length; i++) { const v = timeBuf[i]; sq += v * v; const m = Math.abs(v); if (m > pk) pk = m; }
+  calAcc.maxBin.push(mx); calAcc.L.push(L); calAcc.rms.push(sq / timeBuf.length); calAcc.pk = Math.max(calAcc.pk, pk);
+}
+const energyMean = arr => arr.length ? 10 * Math.log10(arr.reduce((a, v) => a + Math.pow(10, v / 10), 0) / arr.length) : NaN;
+const quant = (arr, p) => { const s = [...arr].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+function calStatus(id, kind, html) { const o = $(id); o.hidden = false; o.className = "status" + (kind ? " " + kind : ""); o.innerHTML = html; }
+async function calRun(btn, outId, secs) {
+  if (calAcc) return null;
+  if (demo) { calStatus(outId, "warn", "Pare a demonstração antes de calibrar."); return null; }
+  if (!running) await start(false);
+  if (!running) return null;
+  btn.disabled = true;
+  calStatus(outId, "", "Preparando…");
+  await new Promise(r => setTimeout(r, 500));                 // deixa o analisador estabilizar
+  calAcc = { maxBin: [], L: [], rms: [], pk: 0 };
+  const t0 = performance.now();
+  const iv = setInterval(() => calStatus(outId, "", `Medindo… ${Math.max(0, Math.ceil(secs - (performance.now() - t0) / 1000))} s`), 200);
+  await new Promise(r => setTimeout(r, secs * 1000));
+  clearInterval(iv);
+  const a = calAcc; calAcc = null; btn.disabled = false;
+  if (!a || a.L.length < 5) { calStatus(outId, "warn", "Não consegui medir. Confira se o microfone está ligado e tente de novo."); return null; }
+  return a;
+}
+function renderCalInfo() {
+  const o = $("#calInfo");
+  if (!running || !micInfo) { o.hidden = true; return; }
+  const s = micInfo.s || {}, filt = [s.echoCancellation && "cancelamento de eco", s.noiseSuppression && "supressão de ruído", s.autoGainControl && "ganho automático"].filter(Boolean);
+  o.hidden = false;
+  if (filt.length) { o.className = "status warn"; o.innerHTML = `<b>Atenção:</b> o navegador está usando ${filt.join(", ")}. Isso esconde microfonia e deixa o medidor errado. Feche outros apps que usam o microfone; no iPhone, o Safari às vezes ignora o pedido para desligar.`; }
+  else { o.className = "status ok"; o.innerHTML = `Entrada: <b>${micInfo.label || "microfone"}</b>${s.sampleRate ? " · " + Math.round(s.sampleRate / 1000) + " kHz" : ""}. Filtros do navegador desligados (bom).`; }
+}
+function renderCalSaved() {
+  const t = calInfo.t ? new Date(calInfo.t) : null, p = [];
+  if (calInfo.noise) p.push(`ruído de fundo ${calInfo.noise.leq.toFixed(0)} dB(A), mínimo do pico ${calInfo.noise.minDb} dBFS`);
+  if (calInfo.level) p.push(`pico ${calInfo.level.pk.toFixed(0)} dBFS`);
+  if (calInfo.meter) { const d = calInfo.meter.cal - DEF.cal; p.push(`medidor ${d >= 0 ? "+" : ""}${d.toFixed(1).replace(".", ",")} dB em relação ao padrão`); }
+  $("#calSaved").textContent = p.length ? `Última calibração (${t.toLocaleDateString("pt-BR")} ${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}): ${p.join("; ")}.` : "Ainda não calibrado neste aparelho.";
+}
+const calTouch = () => { calInfo.t = Date.now(); saveCalInfo(); renderCalSaved(); };
+$("#calLevel").addEventListener("click", async () => {
+  const a = await calRun($("#calLevel"), "#calLevelOut", 5); if (!a) return;
+  const pk = 20 * Math.log10(Math.max(a.pk, 1e-6)), rms = 10 * Math.log10(a.rms.reduce((s, v) => s + v, 0) / a.rms.length + 1e-20);
+  let kind, tip;
+  if (pk >= -1) { kind = "warn"; tip = "O som está <b>estourando</b> e distorce. Afaste o celular da caixa ou baixe o volume, senão a detecção erra."; }
+  else if (pk >= -6) { kind = "warn"; tip = "Perto do limite. Funciona, mas afaste um pouco o celular da caixa."; }
+  else if (pk < -45) { kind = "warn"; tip = "Sinal <b>muito fraco</b>. Aproxime o celular do som ou aumente o volume, e confira se nada tampa o microfone dele."; }
+  else { kind = "ok"; tip = "Nível bom para a detecção."; }
+  calInfo.level = { pk, rms }; calTouch();
+  calStatus("#calLevelOut", kind, `Pico <b>${pk.toFixed(0)} dBFS</b> · médio <b>${rms.toFixed(0)} dBFS</b>. ${tip}`);
+});
+$("#calNoise").addEventListener("click", async () => {
+  const a = await calRun($("#calNoise"), "#calNoiseOut", 5); if (!a) return;
+  const peak = quant(a.maxBin, 0.95), leq = energyMean(a.L), old = cfg.minDb;
+  const nu = Math.max(-90, Math.min(-30, Math.ceil(peak + 6)));
+  cfg.minDb = nu; saveCfg(); $("#cfgMin").value = nu; $("#oMin").textContent = nu + " dBFS";
+  calInfo.noise = { leq, peak, minDb: nu }; calTouch();
+  let tip = "";
+  if (leq > 60) tip = " Tem bastante barulho agora: espere a igreja ficar mais calma e meça de novo.";
+  else if (nu >= -40) tip = " O ruído é alto e pode esconder microfonias fracas.";
+  calStatus("#calNoiseOut", tip ? "warn" : "ok", `Ruído de fundo: <b>${leq.toFixed(0)} dB(A)</b>. O app agora ignora picos mais fracos que <b>${nu} dBFS</b> (antes: ${old}).${tip}`);
+});
+let calLeq = null;
+$("#calMeter").addEventListener("click", async () => {
+  const a = await calRun($("#calMeter"), "#calMeterOut", 5); if (!a) return;
+  calLeq = energyMean(a.L);
+  calStatus("#calMeterOut", "", `O app leu <b>${calLeq.toFixed(1)} dB(A)</b>. Digite abaixo o que o decibelímetro mostrou e toque em Aplicar.`);
+  $("#calRefRow").hidden = false;
+});
+$("#calApply").addEventListener("click", () => {
+  const ref = parseFloat($("#calRef").value);
+  if (calLeq === null || !isFinite(ref)) { calStatus("#calMeterOut", "warn", "Meça primeiro e digite o valor do decibelímetro."); return; }
+  const delta = ref - calLeq;
+  if (Math.abs(delta) > 30) { calStatus("#calMeterOut", "warn", "A diferença ficou grande demais (mais de 30 dB). Confira se os dois aparelhos estavam lado a lado e o valor digitado."); return; }
+  cfg.cal = Math.round((cfg.cal + delta) * 2) / 2; saveCfg(); $("#cfgCal").value = cfg.cal;
+  calInfo.meter = { cal: cfg.cal }; calTouch();
+  calStatus("#calMeterOut", "ok", `Pronto: o medidor foi ajustado em <b>${delta >= 0 ? "+" : ""}${delta.toFixed(1)} dB</b> e agora deve bater com o decibelímetro.`);
+  $("#calRefRow").hidden = true; calLeq = null;
+});
+$("#calReset").addEventListener("click", () => {
+  cfg.minDb = DEF.minDb; cfg.cal = DEF.cal; saveCfg();
+  $("#cfgMin").value = cfg.minDb; $("#oMin").textContent = cfg.minDb + " dBFS"; $("#cfgCal").value = cfg.cal;
+  calInfo = {}; saveCalInfo(); renderCalSaved();
+  for (const id of ["#calLevelOut", "#calNoiseOut", "#calMeterOut"]) $(id).hidden = true;
+  $("#calRefRow").hidden = true;
+});
+renderCalSaved();
 
 /* usado pela aba Planta: mede o nível médio (Leq) durante alguns segundos */
 window.__mic = {
